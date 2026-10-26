@@ -48,6 +48,7 @@ def _principal(**overrides):
         "is_superuser": False,
         "is_platform_admin": False,
         "is_provider_org": False,
+        "is_external": False,
         "role_ids": [],
         "role_names": [],
         "embed": False,
@@ -85,6 +86,97 @@ class _FakeWebSocket:
 
 
 class TestAgentRouterCoverage:
+    @pytest.mark.asyncio
+    async def test_list_agents_forces_active_only_for_non_admin(self, monkeypatch):
+        repo = SimpleNamespace(
+            list_agents=AsyncMock(return_value=[]),
+            list_all_in_scope=AsyncMock(return_value=[]),
+        )
+        monkeypatch.setattr(agents, "AgentRepository", lambda **_kwargs: repo)
+        user = _principal()
+        user.has_platform_admin_grant = lambda: False
+
+        assert await agents.list_agents(
+            db=_FakeDb([]),
+            user=user,
+            active_only=False,
+            discovery_only=False,
+        ) == []
+
+        repo.list_agents.assert_awaited_once_with(
+            active_only=True,
+            include_owned_inactive=True,
+        )
+        repo.list_all_in_scope.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_discovery_excludes_owned_inactive_agents(self, monkeypatch):
+        repo = SimpleNamespace(
+            list_agents=AsyncMock(return_value=[]),
+            list_all_in_scope=AsyncMock(return_value=[]),
+        )
+        monkeypatch.setattr(agents, "AgentRepository", lambda **_kwargs: repo)
+        user = _principal()
+        user.has_platform_admin_grant = lambda: False
+
+        assert await agents.list_agents(
+            db=_FakeDb([]),
+            user=user,
+            active_only=False,
+            discovery_only=True,
+        ) == []
+
+        repo.list_agents.assert_awaited_once_with(
+            active_only=True,
+            include_owned_inactive=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_agent_hides_inactive_record_from_non_admin(self, monkeypatch):
+        agent_id = uuid4()
+        repo = SimpleNamespace(
+            get_agent_with_access_check=AsyncMock(
+                return_value=SimpleNamespace(
+                    id=agent_id,
+                    is_active=False,
+                    access_level=AgentAccessLevel.AUTHENTICATED,
+                    owner_user_id=None,
+                )
+            )
+        )
+        monkeypatch.setattr(agents, "AgentRepository", lambda **_kwargs: repo)
+        user = _principal()
+        user.has_platform_admin_grant = lambda: False
+        db = _FakeDb([])
+
+        with pytest.raises(HTTPException) as exc:
+            await agents.get_agent(agent_id, db=db, user=user)
+
+        assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_agent_allows_owner_to_manage_inactive_private_agent(
+        self, monkeypatch
+    ):
+        owner_id = uuid4()
+        agent = SimpleNamespace(
+            id=uuid4(),
+            is_active=False,
+            access_level=AgentAccessLevel.PRIVATE,
+            owner_user_id=owner_id,
+        )
+        repo = SimpleNamespace(
+            get_agent_with_access_check=AsyncMock(return_value=agent)
+        )
+        monkeypatch.setattr(agents, "AgentRepository", lambda **_kwargs: repo)
+        monkeypatch.setattr(agents, "_agent_to_public", lambda row, **_kwargs: row)
+        user = _principal(user_id=owner_id)
+        user.has_platform_admin_grant = lambda: False
+
+        result = await agents.get_agent(agent.id, db=_FakeDb([]), user=user)
+
+        assert result is agent
+
     @pytest.mark.asyncio
     async def test_validate_agent_references_collects_tool_and_delegate_errors(self):
         target_org_id = uuid4()

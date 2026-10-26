@@ -246,6 +246,49 @@ class TestListAgentsTool:
 
 class TestGetAgentTool:
     @pytest.mark.asyncio
+    async def test_get_agent_hides_inactive_agent_from_non_owner(self):
+        agent = _agent_detail(is_active=False)
+        db = AsyncMock()
+
+        with (
+            patch.object(agents, "get_tool_db", _fake_tool_db(db)),
+            patch.object(
+                agents,
+                "_load_accessible_agent",
+                AsyncMock(return_value=agent),
+            ),
+        ):
+            result = await agents.get_agent(_context(), agent_id=str(agent.id))
+
+        assert "not found" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_get_agent_allows_inactive_private_agent_owner(self):
+        owner_id = uuid4()
+        agent = _agent_detail(
+            is_active=False,
+            access_level=AgentAccessLevel.PRIVATE,
+            owner_user_id=owner_id,
+        )
+        db = AsyncMock()
+
+        with (
+            patch.object(agents, "get_tool_db", _fake_tool_db(db)),
+            patch.object(
+                agents,
+                "_load_accessible_agent",
+                AsyncMock(return_value=agent),
+            ),
+        ):
+            result = await agents.get_agent(
+                _context(user_id=owner_id),
+                agent_id=str(agent.id),
+            )
+
+        assert result.structured_content["id"] == str(agent.id)
+        assert result.structured_content["is_active"] is False
+
+    @pytest.mark.asyncio
     async def test_get_agent_by_id_shapes_full_agent_details(self):
         agent = _agent_detail()
         db = AsyncMock()
