@@ -50,10 +50,10 @@ class TestToPublicDict:
         assert result["workflow_name"] == "my_workflow"
         assert result["is_agent"] is False
         assert result["public_url"] == "https://bifrost.example.com"
-        assert result["parameters"] == {"ticket_id": 42}
-        assert result["startup"] == {"preloaded": True}
-        assert result["form_inputs"] == {"ticket_id": "visitor"}
-        assert result["embed"] == {"ticket_id": "signed"}
+        assert result["parameters"] == {"ticket_id": "[REDACTED]"}
+        assert result["startup"] == {"preloaded": "[REDACTED]"}
+        assert result["form_inputs"] == {"ticket_id": "[REDACTED]"}
+        assert result["embed"] == {"ticket_id": "[REDACTED]"}
         assert result["roi"] == {"time_saved": 15, "value": 100.0}
 
     def test_excludes_private_fields(self):
@@ -90,6 +90,33 @@ class TestToPublicDict:
         )
         result = ctx.to_public_dict()
         assert result["startup"] is None
+
+    def test_runtime_payloads_are_copied_and_cycles_fail_closed(self):
+        nested = {
+            "items": [{"token": "secret"}],
+            "runtime-secret": "hidden key",
+            "[REDACTED_KEY_1]": "existing key",
+        }
+        nested["cycle"] = nested
+        ctx = ExecutionContext(
+            user_id="u-1", email="a@b.com", name="A",
+            scope="GLOBAL", organization=None,
+            is_platform_admin=False, is_function_key=False,
+            execution_id="e-1",
+            parameters=nested,
+        )
+        ctx._register_dynamic_secret("runtime-secret")
+
+        result = ctx.to_public_dict()
+
+        assert result["parameters"] == {
+            "items": [{"token": "[REDACTED]"}],
+            "[REDACTED_KEY_2]": "[REDACTED]",
+            "[REDACTED_KEY_1]": "[REDACTED]",
+            "cycle": "[REDACTED]",
+        }
+        result["parameters"]["items"].append("changed")
+        assert len(ctx.parameters["items"]) == 1
 
 
 class TestNoConfigField:

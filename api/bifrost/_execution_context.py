@@ -24,6 +24,81 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _MIN_SECRET_LENGTH = 4
+_PUBLIC_REDACTED = "[REDACTED]"
+
+
+def _public_mapping_key(
+    key: Any,
+    occupied_keys: set[Any],
+    emitted_keys: dict[Any, Any],
+    secret_values: set[str],
+    redacted_key_index: int,
+) -> tuple[Any, int]:
+    """Return a collision-safe public key and the next placeholder index."""
+    if not isinstance(key, str) or not any(
+        secret in key for secret in secret_values
+    ):
+        return key, redacted_key_index
+
+    while True:
+        candidate = f"[REDACTED_KEY_{redacted_key_index}]"
+        redacted_key_index += 1
+        if candidate not in occupied_keys and candidate not in emitted_keys:
+            return candidate, redacted_key_index
+
+
+def _redact_public_mapping(
+    value: dict[Any, Any],
+    active_container_ids: set[int],
+    secret_values: set[str],
+) -> dict[Any, Any]:
+    """Copy a mapping while redacting its values and registered-secret keys."""
+    occupied_keys = set(value)
+    redacted: dict[Any, Any] = {}
+    redacted_key_index = 1
+    for key, item in value.items():
+        safe_key, redacted_key_index = _public_mapping_key(
+            key,
+            occupied_keys,
+            redacted,
+            secret_values,
+            redacted_key_index,
+        )
+        redacted[safe_key] = _redact_public_runtime(
+            item,
+            active_container_ids,
+            secret_values,
+        )
+    return redacted
+
+
+def _redact_public_runtime(
+    value: Any,
+    active_container_ids: set[int],
+    secret_values: set[str],
+) -> Any:
+    """Copy runtime payload shape while redacting every leaf value."""
+    if value is None:
+        return None
+    if isinstance(value, (dict, list, tuple, set)):
+        container_id = id(value)
+        if container_id in active_container_ids:
+            return _PUBLIC_REDACTED
+        active_container_ids.add(container_id)
+        try:
+            if isinstance(value, dict):
+                return _redact_public_mapping(
+                    value,
+                    active_container_ids,
+                    secret_values,
+                )
+            return [
+                _redact_public_runtime(item, active_container_ids, secret_values)
+                for item in value
+            ]
+        finally:
+            active_container_ids.remove(container_id)
+    return _PUBLIC_REDACTED
 
 
 @dataclass
@@ -236,7 +311,8 @@ class ExecutionContext:
         return self.name
 
     def to_public_dict(self) -> dict[str, Any]:
-        """Serialize all non-private fields for persistence/API responses."""
+        """Serialize public metadata with runtime payload values redacted."""
+        secret_values = self._collect_secret_values()
         return {
             "user_id": self.user_id,
             "email": self.email,
@@ -261,10 +337,10 @@ class ExecutionContext:
             "is_agent": self.is_agent,
             "artifact_workspace_id": self.artifact_workspace_id,
             "public_url": self.public_url,
-            "parameters": self.parameters,
-            "startup": self.startup,
-            "form_inputs": self.form_inputs,
-            "embed": self.embed,
+            "parameters": _redact_public_runtime(self.parameters, set(), secret_values),
+            "startup": _redact_public_runtime(self.startup, set(), secret_values),
+            "form_inputs": _redact_public_runtime(self.form_inputs, set(), secret_values),
+            "embed": _redact_public_runtime(self.embed, set(), secret_values),
             "roi": {
                 "time_saved": self.roi.time_saved,
                 "value": self.roi.value,
