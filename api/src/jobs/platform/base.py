@@ -108,6 +108,7 @@ class PlatformJobContext:
     async def save_checkpoint(
         self, result: dict[str, Any], *, phase: str, require_unexpired_lease: bool = False
     ) -> None:
+        """Raise PlatformJobCancelled on rejection; other errors may follow a commit."""
         from src.services.platform_jobs import checkpoint_platform_job
 
         if not await checkpoint_platform_job(

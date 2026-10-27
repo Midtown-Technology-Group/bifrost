@@ -286,7 +286,10 @@ Protected publication also opts into unexpired-lease enforcement while saving
 each durable intent under the shared checkpoint row lock, including the final
 `manifest_write_started` transition. Missing/expired leases cannot advance that
 checkpoint, and storage cannot issue the conditional manifest write after a
-rejected checkpoint. Other checkpoint callers retain their existing behavior.
+rejected checkpoint. On definitive checkpoint rejection the handler retains its
+previously acknowledged intent for terminal finalization. An uncertain save
+retains the proposed intent instead: a lost acknowledgement may follow a commit.
+Other checkpoint callers retain their existing behavior.
 Normal manual publication retains its existing
 behavior.
 

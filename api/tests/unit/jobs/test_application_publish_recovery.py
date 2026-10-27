@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 
 from src.jobs.platform import application_publish as jobs
 from src.jobs.platform.base import PlatformJobContext, PlatformJobRequiresAction
@@ -452,6 +453,114 @@ async def test_protected_git_guard_rechecks_expiry_after_async_verification(monk
     save.assert_not_awaited()
     storage.verify_publication.assert_not_awaited()
     db.commit.assert_not_awaited()
+
+
+@pytest_asyncio.fixture
+async def committed_job_ids(db_session):
+    """Remove committed runner fixtures even when a receipt assertion fails."""
+    from sqlalchemy import delete
+
+    job_ids = []
+    try:
+        yield job_ids
+    finally:
+        await db_session.rollback()
+        await db_session.execute(delete(PlatformJob).where(PlatformJob.id.in_(job_ids)))
+        await db_session.commit()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("save_outcome", ["rejected", "uncertain"])
+async def test_runner_preserves_acknowledged_intent_after_final_checkpoint_failure(
+    monkeypatch, setup, db_session, committed_job_ids, save_outcome,
+):
+    """Run handler, storage, checkpoint SQL and terminal finalization together."""
+    from sqlalchemy import update
+    from src.jobs.platform import runner
+    from src.services import platform_jobs as service
+    from tests.unit.test_app_storage_publish import _S3Client, _bundle, _storage
+
+    app, db, _storage_stub, publisher, _intent = setup
+    payload = protected_setup(monkeypatch, app)
+    context = protected_admission(db, payload)
+    row = PlatformJob(id=context.job_id, job_type="application.publish", status="running",
+        lease_token=context.lease_token, lease_expires_at=db.job.lease_expires_at,
+        requested_by_user_id=context.requested_by_user_id,
+        requested_by_email=context.requested_by_email, requested_by_name=context.requested_by_name,
+        resource_type="application", resource_id=str(app.id), organization_id=None,
+        dedupe_key=str(app.id), title="Checkpoint receipt fixture", payload=payload.model_dump(mode="json"))
+    db_session.add(row)
+    committed_job_ids.append(row.id)
+    await db_session.commit()
+    db.job = row
+    monkeypatch.setattr(service, "publish_platform_job_update", AsyncMock())
+    monkeypatch.setattr(PlatformJobContext, "report", AsyncMock())
+    config = SimpleNamespace(token="stored-in-memory", repo_url="https://github.com/MTG-Thomas/bifrost-workspace")
+    monkeypatch.setattr(jobs, "get_github_config", AsyncMock(return_value=config))
+    reader = SimpleNamespace(verify_ci=AsyncMock())
+    monkeypatch.setattr(jobs, "ProtectedGitReader", lambda *_args: reader)
+    source = VerifiedInlineAppSource("a" * 40, "b" * 40, "c" * 40, "apps/fixture",
+        InlineAppSourceSnapshot({"app.yaml": b"scope: global", "pages/index.tsx": b"captured"}),
+        {"app.yaml": "100644", "pages/index.tsx": "100644"})
+    monkeypatch.setattr(jobs, "read_app_git_source", AsyncMock(return_value=source))
+    client = _S3Client({})
+    manifest_key = f"_apps/{app.id}/live/manifest.json"
+    original_manifest = b'{"entry":"old.js","outputs":["old.js"]}'
+    client.objects[manifest_key] = original_manifest
+    storage = _storage(client)
+    monkeypatch.setattr(jobs, "AppStorageService", lambda: storage)
+    persist = service.checkpoint_platform_job
+    acknowledged = []
+
+    async def checkpoint(job_id, lease_token, *, result, phase, require_unexpired_lease=False):
+        if result["manifest_write_started"]:
+            # Both publication guards passed before the last checkpoint starts.
+            assert reader.verify_ci.await_count == 2
+            if save_outcome == "rejected":
+                await db_session.execute(update(PlatformJob).where(PlatformJob.id == row.id).values(
+                    lease_expires_at=datetime(2000, 1, 1, tzinfo=timezone.utc),
+                ))
+                await db_session.commit()
+        accepted = await persist(job_id, lease_token, result=result, phase=phase,
+            require_unexpired_lease=require_unexpired_lease)
+        if result["manifest_write_started"] and save_outcome == "uncertain":
+            assert accepted
+            raise TimeoutError("Checkpoint committed but acknowledgement was lost")
+        if accepted:
+            acknowledged.append(result)
+        return accepted
+
+    monkeypatch.setattr(service, "checkpoint_platform_job", checkpoint)
+
+    async def publish(*_args, **kwargs):
+        await kwargs["before_publication"]()
+        await storage.publish(str(app.id), bundle_files=_bundle(),
+            checkpoint_callback=kwargs["checkpoint_callback"],
+            before_manifest_switch=kwargs["before_publication"])
+        pytest.fail("Failed checkpoint must stop the manifest write")
+
+    publisher.side_effect = publish
+    assert await runner.run_claimed_platform_job(row.id, context.lease_token)
+    await db_session.refresh(row)
+    assert len(acknowledged) == 1 and acknowledged[0]["manifest_write_started"] is False
+    assert client.objects[manifest_key] == original_manifest
+    assert len(client.put_calls) == 2 and all(key != manifest_key for key, _body in client.put_calls)
+    assert row.lease_token is None
+    if save_outcome == "rejected":
+        assert row.status == "failed"
+        assert row.error_code == "application_publication_not_applied"
+        assert row.result["original_intent"] == acknowledged[0]
+        assert row.result["publication_verified"] is False
+        replacement, reused = await service.enqueue_platform_job(db_session, jobs.APPLICATION_PUBLISH_DEFINITION,
+            payload.model_copy(update={"message": "New reviewed request"}), dedupe_key=str(app.id),
+            organization_id=None, requested_by_user_id=SYSTEM_USER_UUID,
+            requested_by_email=context.requested_by_email, requested_by_name=context.requested_by_name,
+            resource_type="application", resource_id=str(app.id), title="Reviewed successor", action_url=None)
+        assert not reused and replacement.id != row.id
+    else:
+        assert row.status == "requires_action"
+        assert row.result["manifest_write_started"] is True
+        assert "publication_verified" not in row.result
 
 
 @pytest.mark.asyncio

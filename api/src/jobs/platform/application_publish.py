@@ -21,6 +21,7 @@ from src.jobs.execution_policy import (
     platform_job_operations_policy,
 )
 from src.jobs.platform.base import (
+    PlatformJobCancelled,
     PlatformJobContext,
     PlatformJobDefinition,
     PlatformJobFailure,
@@ -268,13 +269,21 @@ async def run_application_publish(
                     nonlocal intent
                     if await publication_controls_hash(db, application.id, lock=True) != controls:
                         raise ValueError("Application controls changed during its build")
+                    previous_intent = intent
                     intent = {**proof, "controls_hash": controls}
-                    if protected_git is None:
-                        await context.save_checkpoint(intent, phase="Publication intent recorded")
-                    else:
-                        await context.save_checkpoint(
-                            intent, phase="Publication intent recorded", require_unexpired_lease=True,
-                        )
+                    try:
+                        if protected_git is None:
+                            await context.save_checkpoint(intent, phase="Publication intent recorded")
+                        else:
+                            await context.save_checkpoint(
+                                intent, phase="Publication intent recorded", require_unexpired_lease=True,
+                            )
+                    except PlatformJobCancelled:
+                        # Definitive rejection saved nothing. Do not let terminal
+                        # finalization replace the acknowledged pre-write intent.
+                        # Unknown save outcomes must retain the proposed evidence.
+                        intent = previous_intent
+                        raise
 
                 if protected_git is None:
                     published = await repo.publish(
