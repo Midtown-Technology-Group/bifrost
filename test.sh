@@ -140,8 +140,9 @@ reset_state() {
     # keep writable worktrees such as GitHubSyncService's /tmp/git, so merely
     # stopping them can pair stale on-disk Git state with an empty object store.
     # Recreate only those ephemeral application containers; infrastructure and
-    # fixture volumes remain intact.
-    docker compose -f "$COMPOSE_FILE" rm -sf api worker scheduler > /dev/null
+    # fixture volumes remain intact. Remove anonymous dependency volumes with
+    # the containers so repeated resets do not leave their contents on disk.
+    docker compose -f "$COMPOSE_FILE" rm -sfv api worker scheduler > /dev/null
 
     docker compose -f "$COMPOSE_FILE" exec -T postgres psql -U bifrost -d postgres -c \
         "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'bifrost_test' AND pid <> pg_backend_pid();" \
