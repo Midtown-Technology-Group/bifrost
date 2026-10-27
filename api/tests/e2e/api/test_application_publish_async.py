@@ -272,8 +272,16 @@ async def test_captured_source_build_preserves_real_editor_live_storage_and_app_
 
 @pytest.mark.asyncio
 async def test_captured_repository_publication_serves_exact_build_and_preserves_editor_controls(
-    e2e_client, platform_admin, app_factory, db_session,
+    e2e_client, platform_admin, app_factory, db_session, monkeypatch,
 ):
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+    from src.core.application_delivery_policy import InlineAppGitDeliveryPolicy
+    from src.jobs.platform import application_publish as jobs
+    from src.jobs.platform.base import PlatformJobContext, PlatformJobFailure
+    from src.models import User
+    from src.models.contracts.applications import ApplicationGitPublicationInput
+    from src.models.orm.applications import Application
     from src.repositories.applications import ApplicationRepository
     from src.services.application_publication import publication_controls_hash
     from src.services.application_publication_evidence import read_app_publication_runtime_pin
@@ -284,6 +292,9 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     from bifrost.workspace_release import canonical_digest
 
     app = app_factory(platform_admin.headers, f"captured-publish-{uuid.uuid4().hex[:8]}")
+    restricted = e2e_client.patch(f"/api/applications/{app['id']}", headers=platform_admin.headers,
+        json={"access_level": "role_based", "role_ids": []})
+    assert restricted.status_code == 200, restricted.text
     storage = AppStorageService()
     old = _captured_bundle("before-capture")
     await storage.publish(app["id"], bundle_files=old)
@@ -310,21 +321,71 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     source_proof.update({key: value for key, value in protected.items() if key != "expected_controls_hash"})
     saved = []
     guard_calls = []
+    original_job_id, lease = uuid.uuid4(), uuid.uuid4()
+    payload = jobs.ApplicationPublishPayload(application_id=app_id,
+        protected_git=ApplicationGitPublicationInput(**protected))
+    original = PlatformJob(id=original_job_id, job_type="application.publish", status="running",
+        lease_token=lease, lease_expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        requested_by_user_id=str(SYSTEM_USER_UUID),
+        requested_by_email="ci@bifrost.internal", requested_by_name="CI fixture",
+        resource_type="application", resource_id=app["id"],
+        organization_id=uuid.UUID(app["organization_id"]) if app.get("organization_id") else None,
+        title="Captured publication accounting fixture", payload=payload.model_dump(mode="json"))
+    db_session.add(original)
+    await db_session.flush()
+    installed = await db_session.get(Application, app_id)
+    assert installed is not None
+    installed.published_snapshot = {path: "" for path in old}
+    installed.published_at = datetime.now(timezone.utc)
+    await db_session.flush()
+    policy = InlineAppGitDeliveryPolicy(repository="example/ci-fixture", repository_id=10,
+        repository_owner_id=20, organization_id=uuid.UUID("00000000-0000-0000-0000-000000000002"),
+        workflow_path=".github/workflows/deliver.yml", ci_workflow_path=".github/workflows/ci.yml",
+        ci_workflow_id=30, applications={app_id: {"organization_id": installed.organization_id,
+            "repo_subpath": installed.repo_path}})
+    monkeypatch.setattr(jobs, "get_settings", lambda: SimpleNamespace(inline_app_git_delivery_policy=policy))
+    context = PlatformJobContext(job_id=original_job_id, lease_token=lease,
+        organization_id=installed.organization_id, requested_by_user_id=str(SYSTEM_USER_UUID),
+        requested_by_email=original.requested_by_email, requested_by_name=original.requested_by_name)
+    # Exercise the worker's real DB authorization boundary. The migrated system
+    # user has no human App role/admin grant; the previous direct repository
+    # bypass and mocked provider/access checks hid this boundary.
+    actor = await db_session.get(User, SYSTEM_USER_UUID)
+    assert actor is not None and actor.is_active and not actor.is_superuser
+    human_access = ApplicationRepository(db_session, installed.organization_id,
+        user_id=actor.id, is_superuser=actor.is_superuser)
+    assert await human_access.get(id=app_id) is None
 
     async def guard():
+        await jobs._authorize_application_publish(db_session, context, installed, payload)
         assert await publication_controls_hash(db_session, app_id) == controls
         guard_calls.append("checked")
 
     async def checkpoint(intent):
         assert await storage.read_file(app["id"], "live", "manifest.json") == old["manifest.json"]
+        await context.save_checkpoint(
+            {**intent, "controls_hash": controls}, phase="Publication intent recorded",
+            require_unexpired_lease=True,
+        )
         saved.append(intent)
 
-    repository = ApplicationRepository(db_session, app.get("organization_id"),
-        user_id=None, is_superuser=True)
+    # Refusal cases exercise the real persisted job/authorization boundary
+    # without dispatching another job or paying for another build.
+    for expiry in (None, datetime(2000, 1, 1, tzinfo=timezone.utc)):
+        original.lease_expires_at = expiry
+        await db_session.flush()
+        with pytest.raises(PlatformJobFailure, match="permission was revoked"):
+            await jobs._authorize_application_publish(db_session, context, installed, payload)
+    original.lease_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    # Shared checkpoint persistence uses its own transaction, as in the worker.
+    await db_session.commit()
+    repository = await jobs._authorize_application_publish(db_session, context, installed, payload)
     published = await repository.publish(app_id, "CI capture fixture", source_snapshot=captured,
         source_provenance=source_proof, before_publication=guard, checkpoint_callback=checkpoint)
     assert published is not None
     await db_session.commit()
+    await db_session.refresh(original)
+    assert original.result == {**saved[-1], "controls_hash": controls}
     assert len(saved) == 2 and len(guard_calls) == 2
     assert saved[0]["manifest_write_started"] is False
     assert saved[1] == {**saved[0], "manifest_write_started": True}
@@ -335,7 +396,6 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     manifest = json.loads(manifest_bytes)
     assert manifest["git_source_evidence"] == source_proof
     assert manifest["source_snapshot_evidence"]["authored_source_hashes"] == captured.hashes()
-    original_job_id = uuid.uuid4()
     runtime_pin = await read_app_publication_runtime_pin(storage,
         application_id=app_id, publication_job_id=original_job_id,
         organization_id=uuid.UUID(app["organization_id"]) if app.get("organization_id") else None,
@@ -348,13 +408,8 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     # Final accounting uses actual PostgreSQL rows and published storage bytes.
     # Immutable Git/producer admission is exercised separately; this fixture
     # supplies a prepared proof, rather than claiming a real GitHub signature.
-    original = PlatformJob(id=original_job_id, job_type="application.publish", status="succeeded",
-        requested_by_user_id=str(SYSTEM_USER_UUID), requested_by_email="ci@bifrost.internal",
-        requested_by_name="CI fixture", resource_type="application", resource_id=app["id"],
-        organization_id=published.organization_id, title="Captured publication accounting fixture",
-        payload={"application_id": app["id"], "protected_git": protected},
-        result={"publication_verified": True, "publication_intent": intent, "runtime_pin": runtime_pin})
-    db_session.add(original)
+    original.status = "succeeded"
+    original.result = {"publication_verified": True, "publication_intent": intent, "runtime_pin": runtime_pin}
     await db_session.flush()
     assert published.repo_path is not None
     prepared = PreparedAppAccounting(app_id, original.id, published.organization_id, published.repo_path,
@@ -374,7 +429,11 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     published.organization_id = old_scope
     await db_session.flush()
     await db_session.delete(original)
-    await db_session.flush()
+    # The running fixture row was committed above. A teardown rollback of a
+    # flushed deletion would restore it and occupy publication concurrency.
+    await db_session.commit()
+    removed = e2e_client.get(f"/api/platform-jobs/{original_job_id}", headers=platform_admin.headers)
+    assert removed.status_code == 404, removed.text
     for path, expected_hash in intent["artifact_hashes"].items():
         served = e2e_client.get(f"/api/applications/{app['id']}/bundle-asset/{path}?mode=live",
             headers=platform_admin.headers)

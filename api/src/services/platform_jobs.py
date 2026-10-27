@@ -460,17 +460,27 @@ async def finish_platform_job(
 
 
 async def checkpoint_platform_job(
-    job_id: UUID, lease_token: UUID, *, result: dict[str, Any], phase: str
+    job_id: UUID, lease_token: UUID, *, result: dict[str, Any], phase: str,
+    require_unexpired_lease: bool = False,
 ) -> bool:
-    """Durably save resumable handler state on the fenced shared job row."""
+    """Save fenced state, optionally requiring an active lease at this boundary."""
     async with get_db_context() as db:
-        job = (await db.execute(
-            select(PlatformJob).where(
-                PlatformJob.id == job_id, PlatformJob.lease_token == lease_token,
-                PlatformJob.status == "running",
-            ).with_for_update()
-        )).scalar_one_or_none()
+        query = select(PlatformJob).where(
+            PlatformJob.id == job_id, PlatformJob.lease_token == lease_token,
+            PlatformJob.status == "running",
+        )
+        if require_unexpired_lease:
+            query = query.where(
+                PlatformJob.lease_expires_at.is_not(None),
+                PlatformJob.lease_expires_at > _now(),
+            )
+        job = (await db.execute(query.with_for_update())).scalar_one_or_none()
         if job is None:
+            return False
+        # Lock acquisition can wait beyond the timestamp bound into the query.
+        if require_unexpired_lease and (
+            job.lease_expires_at is None or job.lease_expires_at <= _now()
+        ):
             return False
         job.result = result
         job.phase = phase[:200]

@@ -278,7 +278,19 @@ Captured repository publication carries that Git evidence in the compiled
 manifest, captures the Live storage revision before building, and rejects a
 changed revision before writing any outputs. A caller-provided authority check
 runs after compilation and again after output writes immediately before the
-conditional manifest switch. Normal manual publication retains its existing
+conditional manifest switch. Protected Git authority requires a matching running
+job/token with a non-null, unexpired lease, checked before building and again
+after asynchronous source/progress verification at each publication boundary.
+Progress reporting alone does not establish protected publication authority.
+Protected publication also opts into unexpired-lease enforcement while saving
+each durable intent under the shared checkpoint row lock, including the final
+`manifest_write_started` transition. Missing/expired leases cannot advance that
+checkpoint, and storage cannot issue the conditional manifest write after a
+rejected checkpoint. On definitive checkpoint rejection the handler retains its
+previously acknowledged intent for terminal finalization. An uncertain save
+retains the proposed intent instead: a lost acknowledgement may follow a commit.
+Other checkpoint callers retain their existing behavior.
+Normal manual publication retains its existing
 behavior.
 
 `POST /api/applications/{id}/github-source` admits enrolled, already published
@@ -293,6 +305,14 @@ without a new Git read, compilation or effect replay. A reused job proves its
 original source, so the producer must compare its result to the requested commit
 before claiming delivery. The additive enqueue contract reuses
 `PlatformJobAccepted`; existing clients and manual publication remain compatible.
+
+Protected publication uses the active system identity and its durable, currently
+leased admission instead of requiring a human provider/admin role. Before building
+and at each publication boundary, the worker matches the exact job payload, App,
+scope and lease, and rechecks current enrollment, installed ownership and control
+hashes. The system UUID alone cannot publish editor source; manual publication
+retains its human authorization checks. No account receives a new role or grant.
+
 Admission IDs are deterministic for the App/source/producer attempt, so a lost
 terminal response cannot enqueue the same completed operation again. Scoped OIDC
 `POST /api/applications/{id}/github-source/{job_id}/inspect` reads original job

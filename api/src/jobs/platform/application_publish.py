@@ -14,12 +14,14 @@ from shared.external_access import resolve_provider_org_claim
 from shared.scope_resolver import has_scope_bypass
 from src.config import get_settings
 from src.core.database import get_db_context
+from src.core.constants import SYSTEM_USER_UUID
 from src.core.pubsub import publish_app_published
 from src.jobs.execution_policy import (
     WorkloadClass,
     platform_job_operations_policy,
 )
 from src.jobs.platform.base import (
+    PlatformJobCancelled,
     PlatformJobContext,
     PlatformJobDefinition,
     PlatformJobFailure,
@@ -28,6 +30,7 @@ from src.jobs.platform.base import (
 )
 from src.models import User
 from src.models.orm.applications import Application
+from src.models.orm.platform_jobs import PlatformJob
 from src.models.contracts.applications import ApplicationGitPublicationInput
 from src.repositories.applications import ApplicationRepository
 from src.services.application_publication import publication_controls_hash
@@ -82,6 +85,7 @@ async def _authorize_application_publish(
     db: AsyncSession,
     context: PlatformJobContext,
     application: Application,
+    payload: ApplicationPublishPayload,
 ) -> ApplicationRepository:
     """Recheck the requester's current write authority before any publish effect."""
     try:
@@ -106,6 +110,33 @@ async def _authorize_application_publish(
             or current_application.app_model != "inline_v1"
             or current_application.solution_id is not None):
         raise _publish_permission_revoked()
+
+    if payload.protected_git is not None:
+        # OIDC admission owns this narrowly enrolled publication. The system
+        # identity need not hold a human App role or admin grant; its UUID alone
+        # must never authorize publication of arbitrary App/editor source.
+        job = await db.get(PlatformJob, context.job_id, populate_existing=True)
+        policy = get_settings().inline_app_git_delivery_policy
+        if (actor_id != SYSTEM_USER_UUID or job is None or policy is None
+                or job.job_type != APPLICATION_PUBLISH_JOB_TYPE
+                or job.requested_by_user_id != str(SYSTEM_USER_UUID)
+                or job.organization_id != context.organization_id
+                or job.resource_type != "application" or job.resource_id != str(application.id)
+                or job.payload != payload.model_dump(mode="json")
+                or job.status != "running" or job.lease_token != context.lease_token
+                or job.lease_expires_at is None
+                or job.lease_expires_at <= datetime.now(timezone.utc)):
+            raise _publish_permission_revoked()
+        enrollment = policy.enrollment_for(application.id)
+        if (enrollment.organization_id != current_application.organization_id
+                or enrollment.repo_subpath != current_application.repo_path
+                or not current_application.published_snapshot or current_application.published_at is None
+                or await publication_controls_hash(db, application.id)
+                != payload.protected_git.expected_controls_hash):
+            raise _publish_permission_revoked()
+        return ApplicationRepository(
+            db, context.organization_id, user_id=actor_id, is_superuser=True, is_external=False,
+        )
 
     is_provider_org = await resolve_provider_org_claim(db, actor)
     if not has_scope_bypass(
@@ -229,17 +260,30 @@ async def run_application_publish(
                 # or writes anything. Recovery above is deliberately readback-
                 # only and may reconcile an already-applied durable intent even
                 # after the original requester's authority is revoked.
-                repo = await _authorize_application_publish(db, context, application)
+                repo = await _authorize_application_publish(db, context, application, payload)
 
                 async def guard_authority() -> None:
-                    await _authorize_application_publish(db, context, application)
+                    await _authorize_application_publish(db, context, application, payload)
 
                 async def checkpoint(proof: dict) -> None:
                     nonlocal intent
                     if await publication_controls_hash(db, application.id, lock=True) != controls:
                         raise ValueError("Application controls changed during its build")
+                    previous_intent = intent
                     intent = {**proof, "controls_hash": controls}
-                    await context.save_checkpoint(intent, phase="Publication intent recorded")
+                    try:
+                        if protected_git is None:
+                            await context.save_checkpoint(intent, phase="Publication intent recorded")
+                        else:
+                            await context.save_checkpoint(
+                                intent, phase="Publication intent recorded", require_unexpired_lease=True,
+                            )
+                    except PlatformJobCancelled:
+                        # Definitive rejection saved nothing. Do not let terminal
+                        # finalization replace the acknowledged pre-write intent.
+                        # Unknown save outcomes must retain the proposed evidence.
+                        intent = previous_intent
+                        raise
 
                 if protected_git is None:
                     published = await repo.publish(
@@ -271,7 +315,6 @@ async def run_application_publish(
                             "producer_run_attempt": protected_git.producer_run_attempt}
 
                         async def guard_source() -> None:
-                            await guard_authority()
                             await reader.verify_ci(protected_git.source_commit_sha,
                                 protected_git.ci_run_id, protected_git.ci_run_attempt)
                             if await publication_controls_hash(db, application.id, lock=True) != controls:
@@ -279,6 +322,10 @@ async def run_application_publish(
                             # Recheck the original attempt's lease before any
                             # manifest switch, including after output writes.
                             await context.report("Protected source reverified", percent=95)
+                            # Source verification/progress may await external
+                            # services. Require fresh protected authority last;
+                            # a progress update alone does not prove expiry.
+                            await guard_authority()
 
                         published = await repo.publish(
                             application.id, context.requested_by_email, payload.message,
