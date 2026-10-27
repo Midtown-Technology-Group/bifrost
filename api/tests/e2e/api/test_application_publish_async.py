@@ -363,6 +363,10 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
 
     async def checkpoint(intent):
         assert await storage.read_file(app["id"], "live", "manifest.json") == old["manifest.json"]
+        await context.save_checkpoint(
+            {**intent, "controls_hash": controls}, phase="Publication intent recorded",
+            require_unexpired_lease=True,
+        )
         saved.append(intent)
 
     # Refusal cases exercise the real persisted job/authorization boundary
@@ -373,12 +377,15 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
         with pytest.raises(PlatformJobFailure, match="permission was revoked"):
             await jobs._authorize_application_publish(db_session, context, installed, payload)
     original.lease_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-    await db_session.flush()
+    # Shared checkpoint persistence uses its own transaction, as in the worker.
+    await db_session.commit()
     repository = await jobs._authorize_application_publish(db_session, context, installed, payload)
     published = await repository.publish(app_id, "CI capture fixture", source_snapshot=captured,
         source_provenance=source_proof, before_publication=guard, checkpoint_callback=checkpoint)
     assert published is not None
     await db_session.commit()
+    await db_session.refresh(original)
+    assert original.result == {**saved[-1], "controls_hash": controls}
     assert len(saved) == 2 and len(guard_calls) == 2
     assert saved[0]["manifest_write_started"] is False
     assert saved[1] == {**saved[0], "manifest_write_started": True}
@@ -422,7 +429,11 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     published.organization_id = old_scope
     await db_session.flush()
     await db_session.delete(original)
-    await db_session.flush()
+    # The running fixture row was committed above. A teardown rollback of a
+    # flushed deletion would restore it and occupy publication concurrency.
+    await db_session.commit()
+    removed = e2e_client.get(f"/api/platform-jobs/{original_job_id}", headers=platform_admin.headers)
+    assert removed.status_code == 404, removed.text
     for path, expected_hash in intent["artifact_hashes"].items():
         served = e2e_client.get(f"/api/applications/{app['id']}/bundle-asset/{path}?mode=live",
             headers=platform_admin.headers)

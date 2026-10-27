@@ -269,7 +269,12 @@ async def run_application_publish(
                     if await publication_controls_hash(db, application.id, lock=True) != controls:
                         raise ValueError("Application controls changed during its build")
                     intent = {**proof, "controls_hash": controls}
-                    await context.save_checkpoint(intent, phase="Publication intent recorded")
+                    if protected_git is None:
+                        await context.save_checkpoint(intent, phase="Publication intent recorded")
+                    else:
+                        await context.save_checkpoint(
+                            intent, phase="Publication intent recorded", require_unexpired_lease=True,
+                        )
 
                 if protected_git is None:
                     published = await repo.publish(

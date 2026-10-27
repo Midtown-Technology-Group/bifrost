@@ -345,6 +345,34 @@ async def test_checkpoint_failure_stops_before_any_output_or_manifest_write():
 
 
 @pytest.mark.asyncio
+async def test_rejected_final_checkpoint_preserves_live_manifest_after_outputs():
+    from src.jobs.platform.base import PlatformJobCancelled
+
+    client = _S3Client({"entry": "old.js", "outputs": ["old.js"]})
+    original = client.objects["_apps/app-1/live/manifest.json"]
+    guard = AsyncMock()
+    checkpoints = []
+
+    async def checkpoint(intent):
+        checkpoints.append(intent["manifest_write_started"])
+        if intent["manifest_write_started"]:
+            raise PlatformJobCancelled
+
+    with pytest.raises(PlatformJobCancelled):
+        await _storage(client).publish(
+            "app-1", bundle_files=_bundle(), checkpoint_callback=checkpoint,
+            before_manifest_switch=guard,
+        )
+    assert checkpoints == [False, True]
+    guard.assert_awaited_once()
+    assert {key for key, _body in client.put_calls} == {
+        "_apps/app-1/live/entry-new.js", "_apps/app-1/live/chunk-new.js",
+    }
+    assert client.objects["_apps/app-1/live/manifest.json"] == original
+    assert client.delete_calls == []
+
+
+@pytest.mark.asyncio
 async def test_late_publisher_cannot_replace_a_newer_live_manifest():
     client = _S3Client({"entry": "old.js", "outputs": ["old.js"]})
     later = json.dumps({"entry": "later.js", "outputs": ["later.js"]}).encode()

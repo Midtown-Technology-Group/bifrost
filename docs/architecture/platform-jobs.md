@@ -282,6 +282,11 @@ conditional manifest switch. Protected Git authority requires a matching running
 job/token with a non-null, unexpired lease, checked before building and again
 after asynchronous source/progress verification at each publication boundary.
 Progress reporting alone does not establish protected publication authority.
+Protected publication also opts into unexpired-lease enforcement while saving
+each durable intent under the shared checkpoint row lock, including the final
+`manifest_write_started` transition. Missing/expired leases cannot advance that
+checkpoint, and storage cannot issue the conditional manifest write after a
+rejected checkpoint. Other checkpoint callers retain their existing behavior.
 Normal manual publication retains its existing
 behavior.
 

@@ -819,6 +819,86 @@ async def test_stale_runner_cannot_defer_job(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("require_unexpired", [False, True])
+@pytest.mark.parametrize("lease_state", ["current", "missing", "expired"])
+async def test_checkpoint_active_lease_requirement_is_opt_in(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, require_unexpired, lease_state,
+) -> None:
+    from src.jobs.platform.base import PlatformJobCancelled, PlatformJobContext
+
+    job = await _enqueue(db_session)
+    lease = uuid4()
+    job.status, job.lease_token = "running", lease
+    now = datetime.now(timezone.utc)
+    job.lease_expires_at = {
+        "current": now + timedelta(minutes=1), "missing": None, "expired": now - timedelta(seconds=1),
+    }[lease_state]
+    original = {"manifest_write_started": False}
+    job.result = original
+    await db_session.commit()
+    revision = job.revision
+
+    @asynccontextmanager
+    async def test_context():
+        yield db_session
+
+    updated = AsyncMock()
+    monkeypatch.setattr(service, "get_db_context", test_context)
+    monkeypatch.setattr(service, "publish_platform_job_update", updated)
+    context = PlatformJobContext(job.id, lease, job.organization_id,
+        job.requested_by_user_id, job.requested_by_email, job.requested_by_name)
+    advanced = {"manifest_write_started": True}
+    if require_unexpired and lease_state != "current":
+        with pytest.raises(PlatformJobCancelled):
+            await context.save_checkpoint(
+                advanced, phase="Before pointer write", require_unexpired_lease=True,
+            )
+        await db_session.refresh(job)
+        assert job.result == original and job.revision == revision
+        updated.assert_not_awaited()
+    else:
+        await context.save_checkpoint(
+            advanced, phase="Before pointer write", require_unexpired_lease=require_unexpired,
+        )
+        await db_session.refresh(job)
+        assert job.result == advanced and job.revision == revision + 1
+        updated.assert_awaited_once()
+    assert job.status == "running" and job.lease_token == context.lease_token
+
+
+@pytest.mark.asyncio
+async def test_active_checkpoint_rechecks_expiry_after_row_lock(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job = await _enqueue(db_session)
+    lease = uuid4()
+    job.status, job.lease_token = "running", lease
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=1)
+    job.lease_expires_at = expiry
+    job.result = {"manifest_write_started": False}
+    await db_session.commit()
+
+    @asynccontextmanager
+    async def test_context():
+        yield db_session
+
+    monkeypatch.setattr(service, "get_db_context", test_context)
+    updated = AsyncMock()
+    monkeypatch.setattr(service, "publish_platform_job_update", updated)
+    # The SQL predicate passes, then the clock advances across lock acquisition.
+    monkeypatch.setattr(service, "_now", MagicMock(side_effect=[
+        expiry - timedelta(seconds=1), expiry + timedelta(seconds=1),
+    ]))
+    assert not await service.checkpoint_platform_job(
+        job.id, lease, result={"manifest_write_started": True},
+        phase="Before pointer write", require_unexpired_lease=True,
+    )
+    await db_session.refresh(job)
+    assert job.result == {"manifest_write_started": False}
+    updated.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_pre_manifest_disposition_fences_old_lease_and_admits_new_publication(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

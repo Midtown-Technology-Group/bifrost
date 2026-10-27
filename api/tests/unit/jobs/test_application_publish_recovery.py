@@ -390,7 +390,7 @@ async def test_protected_git_job_builds_captured_bytes_and_rechecks_source_contr
     assert jobs.read_app_publication_runtime_pin.await_args.kwargs["intent"] == intent
     assert reader.verify_ci.await_count == report.await_count == 2
     db.application_repo.get.assert_not_awaited()
-    save.assert_awaited_once()
+    save.assert_awaited_once_with(intent, phase="Publication intent recorded", require_unexpired_lease=True)
     assert config.branch == "production-live"
     source_read.assert_awaited_once()
 
