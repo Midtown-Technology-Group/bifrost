@@ -36,10 +36,36 @@ async def fresh_database():
         await _drop_database(name)
 
 
+@pytest_asyncio.fixture
+async def registration_redis(monkeypatch):
+    """The in-process app owns a real Redis connection on this test's loop.
+
+    ASGITransport does not run the API lifespan. Borrowing its process-global
+    pool can pick up a different loop from preceding synchronous E2E fixtures.
+    Keep production's cross-loop refusal intact and own this app's transport.
+    """
+    import redis.asyncio as redis
+
+    from tests.conftest import TEST_REDIS_URL
+
+    client = redis.from_url(TEST_REDIS_URL, decode_responses=True)
+    await client.ping()
+    monkeypatch.setattr(
+        "src.services.passkey_service.get_shared_redis", AsyncMock(return_value=client)
+    )
+    monkeypatch.setattr(
+        "src.routers.auth.get_shared_redis", AsyncMock(return_value=client)
+    )
+    try:
+        yield client
+    finally:
+        await client.aclose()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("race", ["passwords", "mixed", "passkeys", "same_token"])
 async def test_concurrent_public_setup_has_one_winner_and_cannot_replay(
-    fresh_database, race
+    fresh_database, registration_redis, race
 ):
     await asyncio.to_thread(_upgrade, fresh_database, "head")
     engine = create_async_engine(fresh_database)
@@ -64,7 +90,7 @@ async def test_concurrent_public_setup_has_one_winner_and_cannot_replay(
     tokens = []
     async with sessions() as db:
         if race != "passwords":
-            for n in range(2):
+            for n in range(2 if race == "passkeys" else 1):
                 token, _ = await PasskeyService(db).generate_setup_registration_options(
                     f"passkey-{n}@example.com",
                     grant_secrets_reader=True,
@@ -170,6 +196,37 @@ async def test_concurrent_public_setup_has_one_winner_and_cannot_replay(
             )
             assert (await db.get(PlatformSetup, True)).completed
     finally:
+        from src.core.cache.keys import user_refresh_tokens_pattern
+        from src.services.passkey_service import PASSKEY_SETUP_TOKEN_PREFIX
+
+        if tokens:
+            await registration_redis.delete(
+                *(f"{PASSKEY_SETUP_TOKEN_PREFIX}{token}" for token in tokens)
+            )
+        async with sessions() as db:
+            user_ids = (
+                await db.scalars(
+                    select(User.id).where(
+                        User.email.in_(
+                            [
+                                "first-0@example.com",
+                                "first-1@example.com",
+                                "passkey-0@example.com",
+                                "passkey-1@example.com",
+                            ]
+                        )
+                    )
+                )
+            ).all()
+        for user_id in user_ids:
+            keys = [
+                key
+                async for key in registration_redis.scan_iter(
+                    match=user_refresh_tokens_pattern(str(user_id))
+                )
+            ]
+            if keys:
+                await registration_redis.delete(*keys)
         await engine.dispose()
 
 
