@@ -15,8 +15,8 @@ class ExecutionWorker(Base):
 
     ``form`` is ``job`` (a controller-created Kubernetes Job and the pod it
     admitted; drains itself when idle) or ``static`` (a long-running
-    Deployment or Compose container that registers itself and never idles
-    out).
+    Deployment, Compose service, or external container that registers itself
+    and stays up unless that launcher opts into a drain).
 
     States: ``reserved`` (row committed, Job not yet bound) → ``starting``
     (Job UID bound) → ``ready`` (pod admitted, claiming) → ``draining`` (no
@@ -87,8 +87,17 @@ class ExecutionWorker(Base):
     # A worker launched for one large dispatch claims it before anything else.
     reserved_for_dispatch_id: Mapped[UUID | None] = mapped_column(nullable=True)
     runs_handled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    # The build this executor runs (BIFROST_VERSION), reported when it starts.
+    # The build this executor runs (BIFROST_VERSION). A remote launcher reports
+    # its own; a process that registers itself stores the build it is running.
+    # Absent on a launcher from before that report, in which case the API
+    # stamp from registration remains.
     version: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Static launcher asked to drain when no live controller runs ``version``.
+    # Jobs ignore it: their upgrade drain is decided by version and launcher.
+    # Default false, so an existing static or warm-minimum install is unchanged.
+    drain_when_outdated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     # The worker controller instance that created this Job; with ``version``
     # it decides when an upgrade replaces the Job (worker_pool.controller).
     launched_by: Mapped[UUID | None] = mapped_column(nullable=True)

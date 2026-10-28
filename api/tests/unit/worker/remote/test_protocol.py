@@ -17,9 +17,10 @@ from src.worker.remote.protocol import (
     FragmentAssembler,
     Hello,
     ProtocolError,
+    SignedHello,
+    fragment,
     sign_hello,
     verify_hello,
-    fragment,
 )
 
 
@@ -141,3 +142,72 @@ def test_large_logical_message_round_trips_in_bounded_ordered_frames() -> None:
             "result": {"metadata": {"created_at": str(created_at)}},
         },
     )
+
+
+def test_unset_lifecycle_fields_keep_the_historical_signed_bytes() -> None:
+    """A launcher that does not send a build still proves the same payload."""
+    hello = _hello()
+    payload = {
+        "form": "job",
+        "hello_sequence": 1,
+        "hostname": "runner-0",
+        "incarnation_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "issued_at": 1_700_000_000,
+        "job_uid": "job-uid",
+        "launcher_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "nonce": "n" * 32,
+        "pod_uid": "pod-uid",
+    }
+
+    assert hello.canonical_bytes() == json.dumps(
+        payload, separators=(",", ":"), sort_keys=True
+    ).encode()
+    signed = sign_hello("platform-secret", hello)
+    wire = signed.to_dict()
+    for key in ("version", "drain_when_outdated", "exit_when_idle_seconds", "max_runs"):
+        wire.pop(key, None)
+    restored = SignedHello.from_dict(wire)
+
+    assert verify_hello("platform-secret", restored, now=hello.issued_at) == hello
+
+
+def test_reported_build_and_static_limits_are_signed() -> None:
+    hello = _hello(
+        form="static",
+        job_uid=None,
+        pod_uid=None,
+        version="launcher-9",
+        drain_when_outdated=True,
+        exit_when_idle_seconds=0,
+        max_runs=4,
+    )
+    signed = sign_hello("platform-secret", hello)
+
+    assert verify_hello("platform-secret", signed, now=hello.issued_at) == hello
+    assert sign_hello("platform-secret", _hello(form="static", job_uid=None, pod_uid=None)).proof != (
+        signed.proof
+    )
+    with pytest.raises(AuthenticationError):
+        verify_hello(
+            "platform-secret", replace(signed, version="other-build"), now=hello.issued_at
+        )
+    with pytest.raises(AuthenticationError):
+        verify_hello(
+            "platform-secret", replace(signed, max_runs=1), now=hello.issued_at
+        )
+
+
+def test_hello_rejects_an_unusable_reported_build_or_limit() -> None:
+    with pytest.raises(ProtocolError, match="version"):
+        _hello(version="")
+    with pytest.raises(ProtocolError, match="version"):
+        _hello(version="x" * 101)
+    with pytest.raises(ProtocolError, match="limit"):
+        _hello(form="static", job_uid=None, pod_uid=None, max_runs=0)
+    with pytest.raises(ProtocolError, match="limit"):
+        _hello(form="static", job_uid=None, pod_uid=None, exit_when_idle_seconds=-1)
+
+    signed = sign_hello("platform-secret", _hello()).to_dict()
+    signed["max_runs"] = True
+    with pytest.raises(AuthenticationError):
+        SignedHello.from_dict(signed)

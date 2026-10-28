@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, NamedTuple
 from uuid import uuid4
 
+from shared.version import get_version
 from src.services.execution.cpu_sampler import CPUSampler, get_clock_ticks
 from src.services.execution.memory_monitor import effective_memory_sample, memory_pressure_ratio
 from src.services.execution.template_process import TemplateProcess
@@ -30,6 +31,7 @@ from src.worker.remote.protocol import (
     new_nonce,
     sign_hello,
 )
+from src.worker.remote.static_lifecycle import StaticLauncherConfigError, static_launcher_policy
 
 logger = logging.getLogger(__name__)
 LAUNCHER_DRAIN_GRACE_SECONDS = 300.0
@@ -266,6 +268,9 @@ class Launcher:
         """Authenticate each new WebSocket; the physical process stays alive."""
         current, limit = effective_memory_sample()
         self._hello_sequence += 1
+        policy = static_launcher_policy(
+            os.environ, form=self.identity.form, version=get_version()
+        )
         hello = Hello(
             launcher_id=self.identity.launcher_id,
             incarnation_id=self.identity.incarnation_id,
@@ -276,6 +281,10 @@ class Launcher:
             issued_at=int(time.time()),
             nonce=new_nonce(),
             hello_sequence=self._hello_sequence,
+            version=policy.version,
+            drain_when_outdated=policy.drain_when_outdated,
+            exit_when_idle_seconds=policy.exit_when_idle_seconds,
+            max_runs=policy.max_runs,
         )
         await self.socket.send(json.dumps({
             "event": "hello",
@@ -775,6 +784,11 @@ async def run_launcher(
     control_url += "/api/worker-control"
     identity = load_launcher_identity()
     secret = os.environ["BIFROST_SECRET_KEY"]
+    try:
+        static_launcher_policy(os.environ, form=identity.form, version=get_version())
+    except StaticLauncherConfigError:
+        logger.exception("Static launcher lifecycle configuration is invalid")
+        return 1
     launcher: Launcher | None = None
     stopping = asyncio.Event()
     loop = asyncio.get_running_loop()

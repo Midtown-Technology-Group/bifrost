@@ -29,6 +29,7 @@ from src.services.worker_pool.claims import (
     REMOTE_WORKER_HANDLER_NAMES,
     REMOTE_WORKER_HANDLERS,
     admit_worker,
+    note_static_launcher_report,
     register_static_worker,
 )
 from src.worker.pool_main import PoolWorker
@@ -465,7 +466,15 @@ class ApiExecutor(PoolWorker):
     """One admitted remote worker: workflows, agent runs, services and
     platform jobs, each in a launcher child."""
 
-    def __init__(self, bridge: Bridge, incarnation_id: UUID, *, remote_static: bool = False) -> None:
+    def __init__(
+        self,
+        bridge: Bridge,
+        incarnation_id: UUID,
+        *,
+        remote_static: bool = False,
+        static_exit_when_idle_seconds: int | None = None,
+        static_max_runs: int | None = None,
+    ) -> None:
         def ready() -> None:
             notification = asyncio.create_task(bridge.request("ready", {}))
             notification.add_done_callback(_observe_task)
@@ -478,6 +487,9 @@ class ApiExecutor(PoolWorker):
         )
         self.incarnation_id = incarnation_id
         self.bridge = bridge
+        if remote_static:
+            self.static_exit_when_idle_seconds = static_exit_when_idle_seconds
+            self.static_max_runs = static_max_runs
         self._reconcile_lock = asyncio.Lock()
         self._reconciled_generation = 0
 
@@ -933,7 +945,10 @@ class RemoteControlHost:
         if hello.form == "job":
             assert hello.job_uid is not None and hello.pod_uid is not None
             admitted = await admit_worker(
-                hello.incarnation_id, job_uid=hello.job_uid, pod_uid=hello.pod_uid
+                hello.incarnation_id,
+                job_uid=hello.job_uid,
+                pod_uid=hello.pod_uid,
+                version=hello.version,
             )
             if admitted is None:
                 async with get_liveness_db_context() as db:
@@ -961,6 +976,14 @@ class RemoteControlHost:
                     hostname=hello.hostname,
                     incarnation_id=hello.incarnation_id,
                     supported_handlers=list(REMOTE_WORKER_HANDLER_NAMES),
+                    version=hello.version,
+                    drain_when_outdated=hello.drain_when_outdated,
+                )
+            else:
+                await note_static_launcher_report(
+                    hello.incarnation_id,
+                    version=hello.version,
+                    drain_when_outdated=hello.drain_when_outdated,
                 )
         lease = await acquire_remote_owner(
             worker_id=hello.incarnation_id,
@@ -978,10 +1001,19 @@ class RemoteControlHost:
             existing.lease_ref.lease = lease
             existing.last_sequence = 0
             existing.bridge.replace_socket(socket, lease)
+            if hello.form == "static":
+                existing.worker.static_exit_when_idle_seconds = hello.exit_when_idle_seconds
+                existing.worker.static_max_runs = hello.max_runs
             await socket.send_text(json.dumps({"event": "welcome", "session_generation": lease.session_generation}))
             return existing, FragmentAssembler()
         bridge = Bridge(socket, bootstrap, lease)
-        worker = ApiExecutor(bridge, lease.worker_id, remote_static=hello.form == "static")
+        worker = ApiExecutor(
+            bridge,
+            lease.worker_id,
+            remote_static=hello.form == "static",
+            static_exit_when_idle_seconds=hello.exit_when_idle_seconds,
+            static_max_runs=hello.max_runs,
+        )
         await socket.send_text(json.dumps({"event": "welcome", "session_generation": lease.session_generation}))
         session = RemoteSession(bridge, worker, lease)
         self.sessions[lease.worker_id] = session

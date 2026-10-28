@@ -3,9 +3,11 @@
 Two forms share this loop. A *job* worker is started by the worker-pool
 controller as one Kubernetes Job lifetime (it carries an incarnation). A
 *static* worker is a long-running container (the ``scheduler`` and ``worker``
-services, through their entry points) that registers itself and never idles
-out. A remote executor runs workflows, agent runs, services and local platform
-jobs in its launcher's children; the API-resident executor runs summaries.
+services, through their entry points) that registers itself and stays up.
+A static launcher may opt into an idle exit or an exit after N runs; without
+that opt-in the loop never idles it out. A remote executor runs workflows,
+agent runs, services and local platform jobs in its launcher's children; the
+API-resident executor runs summaries.
 
 A job worker admits itself
 to its incarnation (Job UID bound before start, pod UID bound once), then
@@ -185,11 +187,40 @@ class PoolWorker:
         # Idle time from Settings -> Kubernetes, with when it was read.
         self._idle_seconds_value = 0
         self._idle_seconds_read_at: float | None = None
+        # Set by a remote static launcher's hello. None keeps a static
+        # executor always-on. Job workers ignore both and use Settings.
+        self.static_exit_when_idle_seconds: int | None = None
+        self.static_max_runs: int | None = None
 
     def request_stop(self) -> None:
         """SIGTERM or SIGINT: stop claiming and drain within the grace."""
         self._terminating.set()
         self._stop.set()
+
+    async def _idle_limit_reached(self, last_activity: float) -> bool:
+        """Whether this idle executor should ask to drain.
+
+        Job workers use Idle time from Settings. A static launcher uses
+        ``static_exit_when_idle_seconds`` only when that opt-in is set.
+        Otherwise it stays up, which is the historical static behavior.
+        The caller has already stopped when the executor is busy: a claimed
+        run, service or platform job is never dropped to exit.
+        """
+        if self.busy():
+            return False
+        if self.static:
+            limit = self.static_exit_when_idle_seconds
+            return limit is not None and time.monotonic() - last_activity >= limit
+        return time.monotonic() - last_activity >= await self._idle_seconds()
+
+    def _max_runs_reached(self) -> bool:
+        """An opted-in static launcher has finished its run limit and is idle."""
+        return (
+            self.static
+            and self.static_max_runs is not None
+            and not self.busy()
+            and self.runs_handled >= self.static_max_runs
+        )
 
     async def _idle_seconds(self) -> int:
         """Idle time, read again at most every ``POLICY_REFRESH_SECONDS``."""
@@ -465,13 +496,24 @@ class PoolWorker:
                     continue
                 if self.busy():
                     last_activity = time.monotonic()
-                elif (
-                    not self.static
-                    and time.monotonic() - last_activity >= await self._idle_seconds()
-                ):
-                    if await begin_idle_drain(self.incarnation_id):
+                elif self._max_runs_reached():
+                    # Idle, so nothing claimed is still running. Drain stops
+                    # new claims; ``_drain`` waits for anything that lands
+                    # before the stop.
+                    await begin_drain(self.incarnation_id, "max_runs")
+                    return
+                elif await self._idle_limit_reached(last_activity):
+                    if self.static:
+                        # Not a warm worker. Holding it for the Job minimum
+                        # would pin an opted-in launcher that should exit.
+                        drained = await begin_idle_drain(
+                            self.incarnation_id, hold_for_warm_minimum=False
+                        )
+                    else:
+                        drained = await begin_idle_drain(self.incarnation_id)
+                    if drained:
                         return
-                    # Part of the warm minimum: stay ready and look again later.
+                    # Part of the warm minimum, or not ready yet: stay and look again.
                     last_activity = time.monotonic()
                 if (
                     not self.static

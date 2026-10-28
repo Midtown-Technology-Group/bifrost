@@ -11,6 +11,7 @@ from uuid import UUID
 import pytest
 
 from src.services.execution.template_process import TEMPLATE_START_TIMEOUT_SECONDS
+from src.services.worker_pool.claims import REMOTE_WORKER_HANDLER_NAMES
 from src.worker.remote.host import ApiExecutor, Bridge, RemoteControlHost, RemoteSession, _reply_timeout
 from src.worker.remote.ownership import RemoteOwnerLease
 from src.worker.remote.protocol import Hello, sign_hello
@@ -349,6 +350,128 @@ async def test_refused_remote_control_handshake_closes_once(valid_proof: bool) -
     ]
     assert send.await_args_list[-1].args[0]["code"] == 1008
     assert host.sessions == {}
+
+
+class _Scalar:
+    def __init__(self, values: list[object]) -> None:
+        self._values = values
+
+    async def __aenter__(self) -> "_Scalar":
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        return None
+
+    async def scalar(self, *_args: object, **_kwargs: object) -> object:
+        return self._values.pop(0)
+
+
+def _hello_frame(hello: Hello) -> str:
+    return json.dumps({
+        "event": "hello",
+        "hello": sign_hello("secret", hello).to_dict(),
+        "sample": {"current": 1, "limit": 100},
+        "requirements": {},
+    })
+
+
+def _static_hello(**changes: object) -> Hello:
+    values: dict[str, object] = {
+        "launcher_id": LEASE.launcher_id,
+        "incarnation_id": LEASE.worker_id,
+        "job_uid": None,
+        "pod_uid": None,
+        "hostname": "aca-0",
+        "form": "static",
+        "issued_at": int(time.time()),
+        "nonce": "n" * 32,
+        "hello_sequence": 1,
+        "version": "launcher-build",
+        "drain_when_outdated": True,
+        "exit_when_idle_seconds": 30,
+        "max_runs": 2,
+    }
+    values.update(changes)
+    return Hello(**values)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_static_hello_records_the_launcher_build_and_reconnects_its_limits() -> None:
+    first = _static_hello()
+    second = _static_hello(
+        nonce="m" * 32,
+        hello_sequence=2,
+        version="launcher-build-2",
+        exit_when_idle_seconds=5,
+        max_runs=4,
+    )
+    socket = Mock(accept=AsyncMock(), send_text=AsyncMock())
+    socket.receive_text = AsyncMock(side_effect=[_hello_frame(first), _hello_frame(second)])
+    register = AsyncMock()
+    note = AsyncMock()
+    sessions: list[Mock] = []
+
+    def build_session(bridge: object, worker: ApiExecutor, lease: object) -> Mock:
+        session = Mock(bridge=bridge, worker=worker, lease=lease, lease_ref=Mock())
+        session.task = Mock()
+        sessions.append(session)
+        return session
+
+    with (
+        patch("src.worker.remote.host.get_settings", return_value=Mock(secret_key="secret")),
+        patch("src.worker.remote.host.get_liveness_db_context", return_value=_Scalar([None, LEASE.worker_id])),
+        patch("src.worker.remote.host.register_static_worker", register),
+        patch("src.worker.remote.host.note_static_launcher_report", note),
+        patch("src.worker.remote.host.acquire_remote_owner", new=AsyncMock(return_value=LEASE)),
+        patch("src.worker.remote.host.RemoteSession", side_effect=build_session),
+    ):
+        host = RemoteControlHost()
+        await host.connect(socket)
+        await host.connect(socket)
+
+    register.assert_awaited_once_with(
+        hostname="aca-0",
+        incarnation_id=LEASE.worker_id,
+        supported_handlers=list(REMOTE_WORKER_HANDLER_NAMES),
+        version="launcher-build",
+        drain_when_outdated=True,
+    )
+    note.assert_awaited_once_with(
+        LEASE.worker_id, version="launcher-build-2", drain_when_outdated=True,
+    )
+    assert len(sessions) == 1
+    assert sessions[0].worker.static_exit_when_idle_seconds == 5
+    assert sessions[0].worker.static_max_runs == 4
+
+
+@pytest.mark.asyncio
+async def test_job_hello_stamps_the_launcher_build() -> None:
+    hello = Hello(
+        launcher_id=LEASE.launcher_id,
+        incarnation_id=LEASE.worker_id,
+        job_uid="job",
+        pod_uid="pod",
+        hostname="runner-0",
+        form="job",
+        issued_at=int(time.time()),
+        nonce="n" * 32,
+        hello_sequence=1,
+        version="job-build",
+    )
+    socket = Mock(accept=AsyncMock(), send_text=AsyncMock())
+    socket.receive_text = AsyncMock(return_value=_hello_frame(hello))
+    admit = AsyncMock(return_value=1)
+    with (
+        patch("src.worker.remote.host.get_settings", return_value=Mock(secret_key="secret")),
+        patch("src.worker.remote.host.admit_worker", admit),
+        patch("src.worker.remote.host.acquire_remote_owner", new=AsyncMock(return_value=LEASE)),
+        patch("src.worker.remote.host.ApiExecutor", return_value=Mock()),
+        patch("src.worker.remote.host.RemoteSession", return_value=Mock(task=Mock())),
+    ):
+        await RemoteControlHost().connect(socket)
+
+    assert admit.await_args is not None
+    assert admit.await_args.kwargs["version"] == "job-build"
 
 
 def test_agent_launches_wait_long_enough_for_a_template_build() -> None:

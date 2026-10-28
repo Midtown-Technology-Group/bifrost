@@ -126,6 +126,85 @@ async def test_a_job_worker_idles_out_on_the_idle_time_in_settings(monkeypatch) 
     drain.assert_awaited_once_with(worker.incarnation_id)
 
 
+def _static_claim_worker(**attributes: object) -> PoolWorker:
+    worker = _worker_with_pool()
+    for name, value in attributes.items():
+        setattr(worker, name, value)
+    return worker
+
+
+async def test_a_static_executor_without_an_opt_in_does_not_idle_out(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    worker = _static_claim_worker()
+    idle = AsyncMock(return_value=True)
+    stop = AsyncMock()
+    monkeypatch.setattr(pool_main, "claim_next", AsyncMock(return_value=None))
+    monkeypatch.setattr(pool_main, "begin_idle_drain", idle)
+    monkeypatch.setattr(pool_main, "begin_drain", stop)
+    monkeypatch.setattr(pool_main, "POLL_SECONDS", 0.01)
+
+    loop = asyncio.create_task(worker._claim_loop())
+    await asyncio.sleep(0.2)
+    loop.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await loop
+
+    idle.assert_not_awaited()
+    stop.assert_not_awaited()
+
+
+async def test_an_opted_in_static_launcher_idles_out_without_the_warm_minimum(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    worker = _static_claim_worker(static_exit_when_idle_seconds=0)
+    idle = AsyncMock(return_value=True)
+    monkeypatch.setattr(pool_main, "claim_next", AsyncMock(return_value=None))
+    monkeypatch.setattr(pool_main, "begin_idle_drain", idle)
+    monkeypatch.setattr(pool_main, "POLL_SECONDS", 0.01)
+
+    await asyncio.wait_for(worker._claim_loop(), timeout=3)
+
+    idle.assert_awaited_once_with(worker.incarnation_id, hold_for_warm_minimum=False)
+
+
+async def test_an_opted_in_static_launcher_exits_after_max_runs_only_when_idle(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    running = {"claimed-run"}
+    worker = _worker_with_pool(running=running)
+    worker.static_max_runs = 1
+    worker.runs_handled = 1
+    stop = AsyncMock()
+    monkeypatch.setattr(pool_main, "claim_next", AsyncMock(return_value=None))
+    monkeypatch.setattr(pool_main, "begin_drain", stop)
+    monkeypatch.setattr(pool_main, "POLL_SECONDS", 0.01)
+
+    loop = asyncio.create_task(worker._claim_loop())
+    await asyncio.sleep(0.15)
+    stop.assert_not_awaited()
+
+    running.clear()
+    await asyncio.wait_for(loop, timeout=3)
+    stop.assert_awaited_once_with(worker.incarnation_id, "max_runs")
+
+
+async def test_static_idle_exit_waits_for_services_and_platform_jobs(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    worker = _worker_with_pool(services=1)
+    worker.static_exit_when_idle_seconds = 0
+    worker.static_max_runs = 1
+    worker.runs_handled = 1
+    worker._platform_jobs.add(uuid4())
+    idle = AsyncMock(return_value=True)
+    stop = AsyncMock()
+    monkeypatch.setattr(pool_main, "claim_next", AsyncMock(return_value=None))
+    monkeypatch.setattr(pool_main, "begin_idle_drain", idle)
+    monkeypatch.setattr(pool_main, "begin_drain", stop)
+    monkeypatch.setattr(pool_main, "POLL_SECONDS", 0.01)
+
+    loop = asyncio.create_task(worker._claim_loop())
+    await asyncio.sleep(0.15)
+    assert not loop.done()
+    idle.assert_not_awaited()
+    stop.assert_not_awaited()
+    loop.cancel()
+    await asyncio.gather(loop, return_exceptions=True)
+
+
 async def test_draining_hands_services_over_first_and_waits_for_platform_jobs(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     worker = _worker_with_pool(services=1)
     order: list[str] = []

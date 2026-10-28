@@ -15,7 +15,7 @@ import secrets
 import tempfile
 import time
 from base64 import b64decode, b64encode
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from collections.abc import Iterator
 from typing import Any, Mapping
 from uuid import UUID
@@ -30,6 +30,31 @@ MAX_FRAME_BYTES = 1 << 20
 # bound limits only an individual WebSocket frame, never the logical payload.
 FRAGMENT_SPOOL_BYTES = MAX_FRAME_BYTES
 MAX_CLOCK_SKEW_SECONDS = 60
+_MAX_HELLO_LIMIT = 2**31 - 1
+
+
+def _optional_hello_version(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ProtocolError("hello version is invalid")
+    return value
+
+
+def _hello_flag(value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise ProtocolError("hello flag is invalid")
+    return value
+
+
+def _optional_hello_limit(value: Any, *, minimum: int) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ProtocolError("hello limit is invalid")
+    if value < minimum or value > _MAX_HELLO_LIMIT:
+        raise ProtocolError("hello limit is invalid")
+    return value
 
 
 class ProtocolError(ValueError):
@@ -51,6 +76,13 @@ class Hello:
     issued_at: int
     nonce: str
     hello_sequence: int
+    # Keyword-only so SignedHello can still add the required ``proof`` field.
+    # Omitted from the signature when unset, so a launcher from before this
+    # report still verifies. Present values are signed.
+    version: str | None = field(default=None, kw_only=True)
+    drain_when_outdated: bool = field(default=False, kw_only=True)
+    exit_when_idle_seconds: int | None = field(default=None, kw_only=True)
+    max_runs: int | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         if not self.hostname or self.form not in {"job", "static"}:
@@ -63,23 +95,40 @@ class Hello:
             raise ProtocolError("hello nonce must be 24-256 characters")
         if self.hello_sequence < 1:
             raise ProtocolError("hello sequence must be positive")
+        if self.version is not None and (
+            not isinstance(self.version, str)
+            or not 1 <= len(self.version) <= 100
+            or any(ord(char) < 32 or ord(char) > 126 for char in self.version)
+        ):
+            raise ProtocolError("hello version is invalid")
+        if not isinstance(self.drain_when_outdated, bool):
+            raise ProtocolError("hello flag is invalid")
+        _optional_hello_limit(self.exit_when_idle_seconds, minimum=0)
+        _optional_hello_limit(self.max_runs, minimum=1)
 
     def canonical_bytes(self) -> bytes:
-        return json.dumps(
-            {
-                "incarnation_id": str(self.incarnation_id),
-                "issued_at": self.issued_at,
-                "form": self.form,
-                "job_uid": self.job_uid,
-                "launcher_id": str(self.launcher_id),
-                "nonce": self.nonce,
-                "pod_uid": self.pod_uid,
-                "hostname": self.hostname,
-                "hello_sequence": self.hello_sequence,
-            },
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode()
+        payload: dict[str, Any] = {
+            "incarnation_id": str(self.incarnation_id),
+            "issued_at": self.issued_at,
+            "form": self.form,
+            "job_uid": self.job_uid,
+            "launcher_id": str(self.launcher_id),
+            "nonce": self.nonce,
+            "pod_uid": self.pod_uid,
+            "hostname": self.hostname,
+            "hello_sequence": self.hello_sequence,
+        }
+        # Absent optional fields keep the historical signed bytes, so an old
+        # launcher's proof still matches. A set field is part of the proof.
+        if self.version is not None:
+            payload["version"] = self.version
+        if self.drain_when_outdated:
+            payload["drain_when_outdated"] = True
+        if self.exit_when_idle_seconds is not None:
+            payload["exit_when_idle_seconds"] = self.exit_when_idle_seconds
+        if self.max_runs is not None:
+            payload["max_runs"] = self.max_runs
+        return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
 
 
 @dataclass(frozen=True)
@@ -100,6 +149,12 @@ class SignedHello(Hello):
                 nonce=str(value["nonce"]),
                 hello_sequence=int(value["hello_sequence"]),
                 proof=str(value["proof"]),
+                version=_optional_hello_version(value.get("version")),
+                drain_when_outdated=_hello_flag(value.get("drain_when_outdated", False)),
+                exit_when_idle_seconds=_optional_hello_limit(
+                    value.get("exit_when_idle_seconds"), minimum=0
+                ),
+                max_runs=_optional_hello_limit(value.get("max_runs"), minimum=1),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise AuthenticationError("invalid hello") from exc
@@ -276,6 +331,10 @@ def verify_hello(
         issued_at=hello.issued_at,
         nonce=hello.nonce,
         hello_sequence=hello.hello_sequence,
+        version=hello.version,
+        drain_when_outdated=hello.drain_when_outdated,
+        exit_when_idle_seconds=hello.exit_when_idle_seconds,
+        max_runs=hello.max_runs,
     )
     expected = sign_hello(secret, unsigned).proof
     if not hmac.compare_digest(hello.proof, expected):

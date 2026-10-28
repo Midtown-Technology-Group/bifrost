@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from shared.version import get_version
 from src.services.execution.template_process import _RecvQueue, _SendQueue
 from src.worker.remote.launcher import (
     Child,
@@ -23,7 +24,8 @@ from src.worker.remote.launcher import (
     run_launcher,
 )
 from src.worker.remote.identity import LauncherIdentity
-from src.worker.remote.protocol import ControlEnvelope
+from src.worker.remote.protocol import ControlEnvelope, SignedHello, verify_hello
+from src.worker.remote.static_lifecycle import StaticLauncherConfigError
 
 
 def _launcher(socket):
@@ -680,3 +682,45 @@ async def test_memory_pressure_can_stop_an_agent_child():
     launcher.terminate.assert_awaited_once_with(
         "agent", "MemoryLimitExceeded", "Runner memory pressure", grace=0,
     )
+
+
+@pytest.mark.asyncio
+async def test_static_hello_reports_the_launcher_build_and_opt_in(monkeypatch) -> None:
+    monkeypatch.setenv("BIFROST_VERSION", "launcher-9")
+    monkeypatch.setenv("BIFROST_STATIC_DRAIN_WHEN_OUTDATED", "on")
+    monkeypatch.setenv("BIFROST_STATIC_EXIT_WHEN_IDLE_SECONDS", "15")
+    monkeypatch.setenv("BIFROST_STATIC_MAX_RUNS", "3")
+    get_version.cache_clear()
+    socket = Mock(send=AsyncMock())
+    socket.recv = AsyncMock(return_value=json.dumps({"event": "welcome", "session_generation": 4}))
+    launcher = _launcher(socket)
+    try:
+        await launcher.hello({})
+    finally:
+        get_version.cache_clear()
+
+    sent = json.loads(socket.send.await_args.args[0])
+    signed = SignedHello.from_dict(sent["hello"])
+    hello = verify_hello("test-secret", signed, now=signed.issued_at)
+    assert hello.version == "launcher-9"
+    assert hello.drain_when_outdated is True
+    assert hello.exit_when_idle_seconds == 15
+    assert hello.max_runs == 3
+    assert hello.form == "static"
+
+
+@pytest.mark.asyncio
+async def test_invalid_static_lifecycle_exits_before_connecting(monkeypatch) -> None:
+    monkeypatch.setenv("BIFROST_SECRET_KEY", "secret")
+    identity = LauncherIdentity(
+        launcher_id=uuid4(), incarnation_id=uuid4(),
+        job_uid=None, pod_uid=None, hostname="aca-0", form="static",
+    )
+    monkeypatch.setattr("src.worker.remote.launcher.load_launcher_identity", lambda: identity)
+
+    def reject(*_args: object, **_kwargs: object) -> None:
+        raise StaticLauncherConfigError("BIFROST_STATIC_MAX_RUNS must be a positive integer")
+
+    monkeypatch.setattr("src.worker.remote.launcher.static_launcher_policy", reject)
+
+    assert await run_launcher() == 1

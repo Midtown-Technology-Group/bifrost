@@ -61,12 +61,20 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def admit_worker(incarnation_id: UUID, *, job_uid: str, pod_uid: str) -> int | None:
+async def admit_worker(
+    incarnation_id: UUID,
+    *,
+    job_uid: str,
+    pod_uid: str,
+    version: str | None = None,
+) -> int | None:
     """Bind this pod to its incarnation once; None if it was refused.
 
     Only the first pod of the UID-bound Job can admit: a second start of the
-    same Job, or a pod of another Job, is refused. The pod reports the build
-    it runs, which decides when an upgrade replaces it.
+    same Job, or a pod of another Job, is refused. ``version`` is the build
+    the launcher reported. When it is omitted (a launcher from before that
+    report, or this process admitting itself), the row stores this process's
+    build. That build decides when an upgrade replaces the Job.
     """
     now = _now()
     async with get_db_context() as db:
@@ -83,7 +91,7 @@ async def admit_worker(incarnation_id: UUID, *, job_uid: str, pod_uid: str) -> i
             .values(
                 state="ready",
                 kubernetes_pod_uid=pod_uid,
-                version=get_version(),
+                version=get_version() if version is None else version,
                 ready_at=now,
                 heartbeat_at=func.now(),
                 last_claim_at=now,
@@ -97,6 +105,8 @@ async def register_static_worker(
     hostname: str,
     supported_handlers: list[str] | None = None,
     incarnation_id: UUID | None = None,
+    version: str | None = None,
+    drain_when_outdated: bool = False,
 ) -> UUID:
     """A long-running executor joins the pool as ``starting``.
 
@@ -104,6 +114,11 @@ async def register_static_worker(
     (and claims nothing) until ``mark_static_ready`` reports its measured
     budget. A remote physical launcher may supply its immutable incarnation
     UUID; this always creates a new row and never adopts or overwrites one.
+
+    ``version`` is the build that launcher reported. Omitted, the row stores
+    this process's build (an in-process executor, or a launcher from before
+    the report). ``drain_when_outdated`` is the launcher's opt-in to leave
+    when no live controller runs that build. It defaults off.
     """
     worker = ExecutionWorker(
         **({"id": incarnation_id} if incarnation_id is not None else {}),
@@ -117,7 +132,8 @@ async def register_static_worker(
             if supported_handlers is not None
             else [handler for handler, _version in SUPPORTED_HANDLERS]
         ),
-        version=get_version(),
+        version=get_version() if version is None else version,
+        drain_when_outdated=drain_when_outdated,
         heartbeat_at=func.now(),
     )
     async with get_db_context() as db:
@@ -125,6 +141,35 @@ async def register_static_worker(
         await db.flush()
         worker_id = worker.id
     return worker_id
+
+
+async def note_static_launcher_report(
+    incarnation_id: UUID,
+    *,
+    version: str | None,
+    drain_when_outdated: bool,
+) -> None:
+    """Refresh a static row from a reconnecting launcher's hello.
+
+    A hello that omits its build (a launcher from before this report) must
+    not replace the stamp already stored, and must not clear an opt-in that
+    a newer hello already wrote. The opt-in is stored only together with a
+    reported build.
+    """
+    if version is None:
+        return
+    async with get_db_context() as db:
+        if not await fence_remote_owner(db, for_update=True):
+            return
+        await db.execute(
+            update(ExecutionWorker)
+            .where(
+                ExecutionWorker.id == incarnation_id,
+                ExecutionWorker.form == "static",
+                ExecutionWorker.state.in_(("starting", "ready", "draining")),
+            )
+            .values(version=version, drain_when_outdated=drain_when_outdated)
+        )
 
 
 async def mark_static_ready(incarnation_id: UUID, *, memory_budget_bytes: int) -> bool:
@@ -344,12 +389,20 @@ async def begin_drain(incarnation_id: UUID, reason: str) -> bool:
     return drained is not None
 
 
-async def begin_idle_drain(incarnation_id: UUID) -> bool:
-    """Drain an idle job worker unless it is needed for the warm minimum.
+async def begin_idle_drain(
+    incarnation_id: UUID, *, hold_for_warm_minimum: bool = True
+) -> bool:
+    """Drain an idle worker unless it is needed for the warm minimum.
 
-    Serialized with launches by the capacity lock, so idle workers never
+    Serialized with launches by the capacity lock, so idle Job workers never
     collectively drop below Warm workers, read from Settings -> Kubernetes
     under the lock (lowering it lets running idle workers drain).
+
+    A static launcher that opted into its own idle exit passes
+    ``hold_for_warm_minimum=False``. It is not a warm worker (only standard
+    Jobs are), and holding it for that minimum would keep it up forever on
+    an install with no Job to spare. The default call still refuses when the
+    ready standard Jobs are at or below Warm workers.
     """
     async with get_db_context() as db:
         await db.execute(
@@ -362,7 +415,7 @@ async def begin_idle_drain(incarnation_id: UUID) -> bool:
             return False
         keep_ready = (await load_kubernetes_policy(db)).warm_workers
         # A sized Job always drains once idle: only standard Jobs make up the
-        # warm minimum.
+        # warm minimum. Static rows are not in this count.
         sized = await db.scalar(
             select(ExecutionWorker.resource_class == "sized").where(
                 ExecutionWorker.id == incarnation_id
@@ -375,7 +428,7 @@ async def begin_idle_drain(incarnation_id: UUID) -> bool:
                 ExecutionWorker.state == "ready",
             )
         ) or 0
-        if not sized and ready_jobs <= keep_ready:
+        if hold_for_warm_minimum and not sized and ready_jobs <= keep_ready:
             return False
         drained = await db.scalar(
             update(ExecutionWorker)
@@ -413,6 +466,7 @@ __all__ = [
     "SUPPORTED_HANDLERS",
     "admit_worker",
     "register_static_worker",
+    "note_static_launcher_report",
     "mark_static_ready",
     "begin_drain",
     "begin_idle_drain",

@@ -2106,14 +2106,153 @@ def test_a_job_is_outdated_only_when_its_build_and_its_launcher_are_gone() -> No
     live = controller.LiveControllers(ids=frozenset({live_id}), versions=frozenset({"2.0"}))
 
     def job(**values):  # type: ignore[no-untyped-def]
-        return SimpleNamespace(**{"form": "job", "state": "ready", "version": "1.0", "launched_by": uuid4(), **values})
+        return SimpleNamespace(**{
+            "form": "job",
+            "state": "ready",
+            "version": "1.0",
+            "launched_by": uuid4(),
+            "drain_when_outdated": False,
+            **values,
+        })
 
     assert live.outdated(job())
     assert live.outdated(job(version=None, launched_by=None)), "launched before this rule"
     assert not live.outdated(job(version="2.0")), "a live controller runs its build"
     assert not live.outdated(job(launched_by=live_id)), "its launcher is live: never a loop"
     assert not live.outdated(job(state="starting")), "its build is unknown until admitted"
-    assert not live.outdated(job(form="static")), "static executors roll with their Deployment"
+    assert not live.outdated(job(form="static")), "static executors stay up unless they opt in"
+    assert not live.outdated(
+        job(form="static", drain_when_outdated=True, version="2.0")
+    ), "its reported build is still live"
+    assert not live.outdated(
+        job(form="static", drain_when_outdated=True, version=None)
+    ), "no reported build, so nothing to rotate"
+    assert not live.outdated(
+        job(form="static", drain_when_outdated=True, state="starting")
+    ), "not admitted yet"
+    assert live.outdated(
+        job(form="static", drain_when_outdated=True)
+    ), "opted in and no live controller runs its build"
+
+
+async def test_a_remote_static_launcher_records_its_own_build_not_the_api(db, monkeypatch) -> None:
+    from shared.version import get_version
+
+    monkeypatch.setenv("BIFROST_VERSION", "api-build")
+    get_version.cache_clear()
+    try:
+        reported = await claims.register_static_worker(
+            hostname="aca", version="launcher-build", drain_when_outdated=True,
+        )
+        omitted = await claims.register_static_worker(hostname="legacy")
+        async with db.sessions() as session:
+            launcher = await session.get(ExecutionWorker, reported)
+            legacy = await session.get(ExecutionWorker, omitted)
+        assert (launcher.version, launcher.drain_when_outdated) == ("launcher-build", True)
+        assert (legacy.version, legacy.drain_when_outdated) == ("api-build", False)
+    finally:
+        get_version.cache_clear()
+
+
+async def test_a_reconnecting_launcher_refreshes_its_reported_build(db) -> None:
+    worker_id = await claims.register_static_worker(
+        hostname="aca", version="old-build", drain_when_outdated=False,
+    )
+
+    await claims.note_static_launcher_report(
+        worker_id, version="new-build", drain_when_outdated=True,
+    )
+    await claims.note_static_launcher_report(
+        worker_id, version=None, drain_when_outdated=False,
+    )
+
+    async with db.sessions() as session:
+        worker = await session.get(ExecutionWorker, worker_id)
+    assert (worker.version, worker.drain_when_outdated) == ("new-build", True)
+
+
+async def test_static_idle_exit_does_not_wait_for_the_warm_minimum(db) -> None:
+    """An opted-in static launcher is not a warm worker, and must not be held as one."""
+    await _store_policy(db.sessions, replace(POLICY, warm_workers=1))
+    worker_id = await claims.register_static_worker(hostname="aca", version="launcher-build")
+    assert await claims.mark_static_ready(worker_id, memory_budget_bytes=GIB)
+
+    assert not await claims.begin_idle_drain(worker_id)
+    assert await _state(db.sessions, worker_id) == ("ready", None)
+    assert await claims.begin_idle_drain(worker_id, hold_for_warm_minimum=False)
+    assert await _state(db.sessions, worker_id) == ("draining", "idle")
+
+
+async def test_an_opted_in_static_launcher_does_not_satisfy_the_warm_minimum(db) -> None:
+    policy = replace(POLICY, warm_workers=1, max_workers=2)
+    worker_id = await claims.register_static_worker(
+        hostname="aca", version="launcher-build", drain_when_outdated=True,
+    )
+    assert await claims.mark_static_ready(worker_id, memory_budget_bytes=GIB)
+    pool = _controller(FakeCluster(), "current")
+
+    launched = await pool.launch_for_demand(policy)
+
+    assert len(launched) == 1
+    assert worker_id not in launched
+
+
+def _static_pool(version: str) -> controller.WorkerPoolController:  # type: ignore[no-untyped-def]
+    pool = _controller(FakeCluster(), version)
+    pool.live = controller.LiveControllers(
+        ids=frozenset({pool.id}), versions=frozenset({version})
+    )
+    return pool
+
+
+async def test_an_opted_in_static_launcher_drains_when_its_build_is_gone(db) -> None:
+    """No replacement Job: the host restarts the container. The row is only marked draining."""
+    policy = replace(POLICY, warm_workers=1, max_workers=1)
+    old = _static_pool("old-build")
+    await controller._publish_live(old.id, "old-build")
+    worker_id = await claims.register_static_worker(
+        hostname="aca", version="old-build", drain_when_outdated=True,
+    )
+    assert await claims.mark_static_ready(worker_id, memory_budget_bytes=GIB)
+    cluster = FakeCluster()
+    new = _controller(cluster, "new-build")
+    new.live = await controller._publish_live(new.id, "new-build")
+
+    assert await new.replace_outdated(policy) == [], "an old controller is still live"
+    assert await _state(db.sessions, worker_id) == ("ready", None)
+
+    await controller._withdraw_live(old.id)
+    new.live = await controller._publish_live(new.id, "new-build")
+    assert await new.replace_outdated(policy) == [worker_id]
+    assert await _state(db.sessions, worker_id) == ("draining", "rotated")
+    assert cluster.created == []
+    async with db.sessions() as session:
+        rows = (await session.scalars(select(ExecutionWorker))).all()
+    assert [row.id for row in rows] == [worker_id]
+
+
+async def test_a_static_launcher_on_the_live_build_is_not_drained(db) -> None:
+    pool = _static_pool("2.0")
+    worker_id = await claims.register_static_worker(
+        hostname="aca", version="2.0", drain_when_outdated=True,
+    )
+    assert await claims.mark_static_ready(worker_id, memory_budget_bytes=GIB)
+
+    assert await pool.replace_outdated(POLICY) == []
+    assert await _state(db.sessions, worker_id) == ("ready", None)
+
+
+async def test_a_static_launcher_that_did_not_opt_in_is_not_drained(db) -> None:
+    pool = _static_pool("new-build")
+    worker_id = await claims.register_static_worker(hostname="legacy", version="old-build")
+    assert await claims.mark_static_ready(worker_id, memory_budget_bytes=GIB)
+    starting = await claims.register_static_worker(
+        hostname="booting", version="old-build", drain_when_outdated=True,
+    )
+
+    assert await pool.replace_outdated(POLICY) == []
+    assert await _state(db.sessions, worker_id) == ("ready", None)
+    assert await _state(db.sessions, starting) == ("starting", None)
 
 
 async def test_live_controllers_expire_and_withdraw(db) -> None:  # type: ignore[no-untyped-def]

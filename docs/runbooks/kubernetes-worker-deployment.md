@@ -186,7 +186,8 @@ On-demand worker Jobs drain themselves after **Idle Time** (Settings →
 Kubernetes) without work or `BIFROST_POOL_MAX_LIFETIME_SECONDS` of life, and
 the controller keeps at least **Warm Workers** warm. Lowering Warm Workers lets
 running idle launchers drain too. A static launcher an install kept retains its
-configured replica count.
+configured replica count, unless that launcher itself opts into the lifecycle
+variables in [Static launchers outside Kubernetes](#static-launchers-outside-kubernetes).
 
 After an upgrade, the controller replaces worker Jobs running a build that no
 live controller runs, once every controller of that build has stopped: it
@@ -200,9 +201,10 @@ Max Workers. A full pool exactly at its warm minimum still waits for ordinary
 retirement. Draining Jobs continue to count toward Max Workers until their
 children finish.
 
-A drain the platform asks for (idle, rotated, maximum lifetime) stops new
-workflow, service, and PlatformJob dispatch to that launcher and lets its
-physical children finish under their own timeout and lease rules. A run without
+A drain the platform asks for (idle, rotated, maximum lifetime, or a static
+launcher's max-runs exit) stops new workflow, service, and PlatformJob
+dispatch to that launcher and lets its physical children finish under their
+own timeout and lease rules. A run without
 a timeout keeps its drained Job (and its place under Max Workers) until it ends,
 and the API logs a warning once such a drain passes the maximum lifetime.
 
@@ -216,6 +218,51 @@ running children require:
 ```yaml
 terminationGracePeriodSeconds: 360
 ```
+
+## Static launchers outside Kubernetes
+
+A static launcher is any `python -m src.worker.main` or
+`python -m src.scheduler.main` process that is not a Kubernetes Job (no
+`BIFROST_KUBERNETES_JOB_UID` / `BIFROST_KUBERNETES_POD_UID`). Docker Compose
+services and an Azure Container Apps replica are static launchers. They
+authenticate with the same WebSocket hello and `BIFROST_SECRET_KEY` as a Job
+launcher.
+
+By default a static launcher stays up for the life of the container. It does
+not use Idle Time or `BIFROST_POOL_MAX_LIFETIME_SECONDS`, and an upgrade does
+not drain it. That is unchanged for an existing warm-minimum install.
+
+Three variables on the **launcher** process opt in. Set them on the burst
+worker service only. A shared env file also reaches the scheduler, and the
+scheduler is a static launcher too: the same variables would drain it. They
+have no effect on the API process, and a Job launcher ignores them.
+
+| Variable | Effect |
+| --- | --- |
+| `BIFROST_STATIC_DRAIN_WHEN_OUTDATED` | `true` / `false` (also `1`/`0`, `yes`/`no`, `on`/`off`). When true, once no live API controller still runs the build this launcher reported, the controller marks the worker `draining` with `end_reason = rotated`. Bifrost does not start a replacement. The host's restart policy, or a scaler that starts the new image, does. |
+| `BIFROST_STATIC_EXIT_WHEN_IDLE_SECONDS` | Non-negative integer. Unset stays up. `0` exits on the next idle observation. A positive value exits after that many seconds with no workflow run, agent run, service, or platform job. The worker is not held for Warm Workers. |
+| `BIFROST_STATIC_MAX_RUNS` | Positive integer. After this many completed workflow or agent dispatches, and only once nothing is still in flight, the launcher drains with `end_reason = max_runs`. Services and platform jobs delay the exit; they do not increment the count. |
+
+The launcher sends its `BIFROST_VERSION` on the signed hello. The worker row
+stores that build, not the API's. A launcher from before this report omits
+the field; the API keeps stamping its own version and will not rotate that
+row. Upgrade the API before launchers that send a build: a new hello does
+not authenticate to an older API, because the build is part of the signature.
+
+Published images set `BIFROST_VERSION`. An opted-in launcher that can only
+report `unknown`, while the API reports a real version, looks outdated on
+every start. Give the image a version before enabling
+`BIFROST_STATIC_DRAIN_WHEN_OUTDATED`.
+
+Drain never drops a claimed run. The launcher stops accepting new work, lets
+in-flight children finish, then exits 0 so the host can replace the process.
+Closing the WebSocket during an API rollout is still not an exit: the next
+API replica adopts the same process.
+
+A static launcher does not count toward Warm Workers, including one that
+opted into an idle exit. While it is `ready` it still accepts work that fits.
+An install that also runs Kubernetes Jobs keeps launching those Jobs up to
+Warm Workers; the static opt-in does not replace that.
 
 ## Security And RBAC
 

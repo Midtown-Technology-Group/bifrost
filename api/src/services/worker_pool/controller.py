@@ -17,6 +17,12 @@ the ready warm minimum remains available while outdated Jobs drain (never
 deleted), so their runs finish. Replacements launch after normal capacity
 becomes available.
 
+A static launcher is not replaced: Bifrost did not start it. One that opted
+in (``drain_when_outdated``) is only marked draining once no live controller
+runs the build it reported. Its host starts the new process. Static
+launchers that did not opt in are left alone, including a warm-minimum
+install's always-on executor.
+
 Scaling (Warm workers, Max workers, Worker memory, Largest worker) is read
 from Settings -> Kubernetes at the start of every pass, so a change applies
 without a restart.
@@ -93,13 +99,26 @@ class LiveControllers:
     versions: frozenset[str]
 
     def outdated(self, worker: ExecutionWorker) -> bool:
-        """An admitted Job whose build no live controller runs and whose
-        launcher is gone. A Job launched by a live controller is never
-        outdated, so a replacement can never be replaced in turn; a Job not
-        yet admitted has not reported its build."""
+        """An admitted worker whose build no live controller runs.
+
+        A Job also requires that the controller which launched it is gone.
+        A Job launched by a live controller is never outdated, so a
+        replacement can never be replaced in turn; a Job not yet admitted
+        has not reported its build.
+
+        A static launcher is outdated only when it opted in and it reported
+        a build that no live controller runs. Bifrost cannot start its
+        replacement. One that did not opt in, or that never reported a
+        build, keeps today's behavior and stays up.
+        """
+        if worker.state not in ("ready", "draining"):
+            return False
+        if worker.form == "static":
+            return bool(worker.drain_when_outdated) and (
+                worker.version is not None and worker.version not in self.versions
+            )
         return (
             worker.form == "job"
-            and worker.state in ("ready", "draining")
             and worker.version not in self.versions
             and worker.launched_by not in self.ids
         )
@@ -463,13 +482,19 @@ class WorkerPoolController:
         return launched
 
     async def replace_outdated(self, policy: KubernetesPolicy) -> list[UUID]:
-        """Drain only old ready Jobs whose removal keeps the warm minimum.
+        """Drain old ready workers whose build no live controller runs.
 
-        Current replacements launch first whenever a slot is available. If
-        a full pool has no current standard Job making progress, standard
+        Jobs: current replacements launch first whenever a slot is available.
+        If a full pool has no current standard Job making progress, standard
         ready Jobs above the warm minimum let one old Job drain and free an
         ordinary slot. Draining Jobs continue to count toward Max workers
-        until they retire.
+        until they retire. This pass never deletes a Job.
+
+        Static launchers that opted in are marked draining in the same
+        pass, with no replacement launched here. The host (a restart policy,
+        or a scaler that starts the new image) brings the next process up.
+        They are not held for the warm minimum: Bifrost cannot start the
+        process that would replace them, and they do not count toward it.
         """
         async with get_db_context() as db:
             locked = (
@@ -480,54 +505,63 @@ class WorkerPoolController:
             ).scalar_one()
             if not locked:
                 return []
-            jobs = (
+            workers = (
                 await db.execute(
-                    select(ExecutionWorker).where(
-                        ExecutionWorker.form == "job", ExecutionWorker.state.in_(LIVE_STATES)
-                    )
+                    select(ExecutionWorker).where(ExecutionWorker.state.in_(LIVE_STATES))
                 )
             ).scalars().all()
+            jobs = [worker for worker in workers if worker.form == "job"]
             ready = [worker for worker in jobs if worker.state == "ready"]
             outdated = [
                 worker
                 for worker in ready
                 if self.live.outdated(worker) and worker.reserved_for_dispatch_id is None
             ]
-            if not outdated:
-                return []
-            current_ready = sum(
-                1
-                for worker in ready
-                if worker.resource_class == "standard"
-                and worker.memory_budget_bytes is not None
-                and not self.live.outdated(worker)
-            )
-            outdated_standard = [
-                worker for worker in outdated if worker.resource_class == "standard"
+            static_outdated = [
+                worker
+                for worker in workers
+                if worker.form == "static"
+                and worker.state == "ready"
+                and worker.reserved_for_dispatch_id is None
+                and self.live.outdated(worker)
             ]
-            if policy.warm_workers == 0:
-                drainable = outdated
-            elif current_ready >= policy.warm_workers:
-                drainable = outdated
+            if not outdated:
+                drainable = list(static_outdated)
             else:
-                current_starting = any(
-                    worker.resource_class == "standard"
-                    and worker.state in ("reserved", "starting")
-                    and not self.live.outdated(worker)
-                    for worker in jobs
-                )
-                ready_standard = sum(
+                current_ready = sum(
                     1
                     for worker in ready
                     if worker.resource_class == "standard"
                     and worker.memory_budget_bytes is not None
+                    and not self.live.outdated(worker)
                 )
-                ready_excess = max(0, ready_standard - policy.warm_workers)
-                drainable = (
-                    outdated_standard[:ready_excess]
-                    if len(jobs) >= policy.max_workers and not current_starting
-                    else []
-                )
+                outdated_standard = [
+                    worker for worker in outdated if worker.resource_class == "standard"
+                ]
+                if policy.warm_workers == 0:
+                    drainable = list(outdated)
+                elif current_ready >= policy.warm_workers:
+                    drainable = list(outdated)
+                else:
+                    current_starting = any(
+                        worker.resource_class == "standard"
+                        and worker.state in ("reserved", "starting")
+                        and not self.live.outdated(worker)
+                        for worker in jobs
+                    )
+                    ready_standard = sum(
+                        1
+                        for worker in ready
+                        if worker.resource_class == "standard"
+                        and worker.memory_budget_bytes is not None
+                    )
+                    ready_excess = max(0, ready_standard - policy.warm_workers)
+                    drainable = (
+                        list(outdated_standard[:ready_excess])
+                        if len(jobs) >= policy.max_workers and not current_starting
+                        else []
+                    )
+                drainable.extend(static_outdated)
             if not drainable:
                 return []
             drained = list(
@@ -546,7 +580,7 @@ class WorkerPoolController:
             await db.commit()
         if drained:
             logger.info(
-                "Replacing workers running an older build",
+                "Draining workers running an older build",
                 extra={"workers": [str(worker_id) for worker_id in drained], "version": self.version},
             )
         return drained
