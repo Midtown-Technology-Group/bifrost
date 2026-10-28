@@ -4,10 +4,12 @@ Every kind of work (workflow runs, agent runs, summaries, local platform
 jobs and services) is admitted through one gate:
 
 1. Work reserves memory: its request, or what a running workflow run has
-   actually grown by if that is more.
+   actually grown by if that is more. Memory the executor itself takes on
+   after its budget was measured (a warm agent template) is reserved too.
 2. An executor claims work only while the work's request fits its free
    budget (budget minus what it holds) and its real memory is under the
-   threshold.
+   threshold, and only while its claims are open (a remote executor closes
+   them while a reconnected launcher's inventory is reconciled).
 3. Once it holds ``UNPAUSED_STARTS`` pieces of work, it waits
    ``START_PAUSE_SECONDS`` after each start (a workflow run starts when its
    child is forked) before claiming again, so the real-memory check sees
@@ -50,12 +52,19 @@ class Admission:
         under_pressure: Callable[[], bool],
         running_workflow_ids: Callable[[], set[str]],
         workflow_growth: Callable[[], dict[str, int]],
+        claims_open: Callable[[], bool] = lambda: True,
+        own_bytes: Callable[[], int] = lambda: 0,
     ) -> None:
         """``running_workflow_ids`` and ``workflow_growth`` come from the
         process pool: the runs whose children are alive, and how much each
-        has grown since it started."""
+        has grown since it started. ``claims_open`` is false while the
+        executor may not take new work for a reason other than memory.
+        ``own_bytes`` is what the executor itself uses beyond the baseline
+        its budget was measured from."""
         self.budget_bytes = budget_bytes
         self._under_pressure = under_pressure
+        self._claims_open = claims_open
+        self._own_bytes = own_bytes
         self._running_workflow_ids = running_workflow_ids
         self._workflow_growth = workflow_growth
         self._holds: dict[str, _Hold] = {}
@@ -70,7 +79,7 @@ class Admission:
             if key not in running:
                 del self._holds[key]
         growth = self._workflow_growth()
-        return sum(
+        return self._own_bytes() + sum(
             max(hold.request_bytes, growth.get(key, 0)) if hold.workflow else hold.request_bytes
             for key, hold in self._holds.items()
         )
@@ -97,10 +106,13 @@ class Admission:
     @asynccontextmanager
     async def claiming(self) -> AsyncIterator[int | None]:
         """Claim one piece of work: yields the bytes a claim may take, or
-        None while over the threshold (claim nothing). Hold what was claimed
-        before leaving the block."""
+        None while claims are closed or memory is over the threshold (claim
+        nothing). Hold what was claimed before leaving the block."""
         async with self._lock:
             await self._pace()
+            if not self._claims_open():
+                yield None
+                return
             yield None if self.pressured() else self.free_bytes()
 
     async def _pace(self) -> None:

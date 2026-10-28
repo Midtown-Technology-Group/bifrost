@@ -23,9 +23,16 @@ from src.core.database import get_liveness_db_context
 from src.jobs.consumers.package_install import PackageInstallConsumer
 from src.jobs.schedulers.platform_jobs import claim_platform_job, run_claimed_platform_job
 from src.models.orm.execution_workers import ExecutionWorker
-from src.services.memory_requests import MemoryBudget
-from src.services.worker_pool.claims import admit_worker, register_static_worker
+from src.services.execution.template_process import TEMPLATE_START_TIMEOUT_SECONDS
+from src.services.memory_requests import AGENT_TEMPLATE_REQUEST_BYTES, MemoryBudget
+from src.services.worker_pool.claims import (
+    REMOTE_WORKER_HANDLER_NAMES,
+    REMOTE_WORKER_HANDLERS,
+    admit_worker,
+    register_static_worker,
+)
 from src.worker.pool_main import PoolWorker
+from src.worker.remote.agent_route import AgentRoute, RemoteAgentConsumer
 from src.worker.remote.fencing import LeaseRef, remote_owner_context
 from src.worker.remote.ownership import (
     DEFAULT_OWNER_LEASE_SECONDS,
@@ -48,6 +55,22 @@ from src.worker.remote.protocol import (
 
 
 router = APIRouter()
+
+# Opening chat asks every launcher to start its agent template. One request
+# per API replica in this window covers every chat page opened meanwhile.
+AGENT_PREWARM_INTERVAL_SECONDS = 30.0
+COMMAND_REPLY_SECONDS = 15
+
+
+def _reply_timeout(action: str) -> float:
+    """How long a launcher command may take to reply."""
+    if action in ("package_tool", "recycle"):
+        # Package installation uses the existing long bounded pip calls.
+        return 600
+    if action in ("agent_run", "agent_prewarm"):
+        # Either may first build the agent template.
+        return TEMPLATE_START_TIMEOUT_SECONDS + COMMAND_REPLY_SECONDS
+    return COMMAND_REPLY_SECONDS
 
 
 class RemoteProcess:
@@ -79,12 +102,16 @@ class Bridge:
             self.current / self.limit if self.limit > 0 else 1.0
         )
         self.baseline_bytes = self.current
+        # Started after the baseline was measured, so it isn't part of it.
+        self.agent_template = False
         self.hostname = hello["hostname"]
         self.sample_at = time.monotonic()
         self.pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self.jobs: dict[str, RemoteProcess] = {}
         self.platform_routes: dict[tuple[str, str], str] = {}
         self.pool: Any = None
+        # Agent runs in launcher children; kept across reconnects like jobs.
+        self.agents: RemoteAgentConsumer | None = None
         self.admission: Any = None
         self.requirements = hello["requirements"]
         self.inventory: dict[str, Any] | None = None
@@ -126,8 +153,7 @@ class Bridge:
             except (WebSocketDisconnect, OSError, RuntimeError) as exc:
                 self.connected = False
                 raise ConnectionError("Launcher control transport is unavailable") from exc
-            # Package installation uses the existing long bounded pip calls.
-            async with asyncio.timeout(600 if action in ("package_tool", "recycle") else 15):
+            async with asyncio.timeout(_reply_timeout(action)):
                 return await asyncio.shield(future)
         finally:
             self.pending.pop(request_id, None)
@@ -232,6 +258,8 @@ class Bridge:
             self.pressure_ratio = float(event["pressure_ratio"]) if "pressure_ratio" in event else (
                 self.current / self.limit if self.limit > 0 else 1.0
             )
+            if "agent_template" in event:
+                self.agent_template = event["agent_template"] is True
             self.sample_at = time.monotonic()
             if self.pool is not None:
                 await self.pool.handle_event(event)
@@ -254,7 +282,7 @@ class Bridge:
                 self.requirements = requirements
             self.inventory = inventory
             self.inventory_ready.set()
-        elif event.get("event") in {"result", "job_exit"}:
+        elif event.get("event") in {"result", "job_exit", "agent_exit"}:
             # Inventory is authoritative when an API takes over. In
             # particular, a terminal replay can arrive before the old route
             # has been recreated in this API process. Retain it until that
@@ -321,18 +349,32 @@ class Bridge:
                 await self.acknowledge(event_id)
             return True
 
-        if self.pool is None:
+        if event.get("event") == "agent_exit":
+            agents = self.agents
+            if agents is None or not agents.tracks(event.get("route_id")):
+                if not self.reconciliation_ready.is_set():
+                    # Its route may still be adopted from inventory.
+                    return False
+                # Reconciliation rejected the route, or its run was already
+                # settled: nothing here waits for this exit.
+                if isinstance(event_id, str):
+                    await self.acknowledge(event_id)
+                return True
+            deliver = agents.handle_exit
+        elif self.pool is None:
             return False
+        else:
+            deliver = self.pool.handle_event
 
         # Completion may call SDK/Redis/DB or send a new command. Never
         # block this receiver, which must also deliver command replies. The
         # launcher receives ACK only after that canonical mutation returns.
         async def handle_event() -> None:
             if self.lease_ref is None:
-                await self.pool.handle_event(event)
+                await deliver(event)
             else:
                 with remote_owner_context(self.lease_ref):
-                    await self.pool.handle_event(event)
+                    await deliver(event)
             if isinstance(event_id, str):
                 await self.acknowledge(event_id)
 
@@ -420,7 +462,8 @@ class PackageProxy(PackageInstallConsumer):
 
 
 class ApiExecutor(PoolWorker):
-    """One admitted remote worker: workflows/services/platform jobs only."""
+    """One admitted remote worker: workflows, agent runs, services and
+    platform jobs, each in a launcher child."""
 
     def __init__(self, bridge: Bridge, incarnation_id: UUID, *, remote_static: bool = False) -> None:
         def ready() -> None:
@@ -431,7 +474,7 @@ class ApiExecutor(PoolWorker):
             job_uid="remote-controlled",
             pod_uid="remote-controlled",
             on_ready=ready,
-            handlers=(("workflow.execute", 1),),
+            handlers=REMOTE_WORKER_HANDLERS,
         )
         self.incarnation_id = incarnation_id
         self.bridge = bridge
@@ -473,6 +516,11 @@ class ApiExecutor(PoolWorker):
     def _make_package_consumer(self) -> PackageProxy:
         return PackageProxy(self.bridge)
 
+    def _make_agent_consumer(self) -> RemoteAgentConsumer:
+        if self.bridge.agents is None:
+            self.bridge.agents = RemoteAgentConsumer(self.bridge, worker_id=self.incarnation_id)
+        return self.bridge.agents
+
     def _measure_budget(self) -> MemoryBudget:
         current, limit = self.bridge.memory()
         if current < 0 or limit <= 0:
@@ -487,6 +535,17 @@ class ApiExecutor(PoolWorker):
             or limit <= 0
             or self.bridge.pressure_ratio >= self.settings.memory_pressure_threshold
         )
+
+    def _own_bytes(self) -> int:
+        return AGENT_TEMPLATE_REQUEST_BYTES if self.bridge.agent_template else 0
+
+    def _claims_open(self) -> bool:
+        """Closed from a reconnect until that socket's inventory is
+        reconciled. The launcher takes its inventory before it reads any
+        command, so work launched in between would be missing from it and
+        reconciliation would fail its live child. Every claim (workflow and
+        agent runs, services, platform jobs) passes ``Admission.claiming``."""
+        return self.bridge.reconciliation_ready.is_set()
 
     async def _execute_platform_job(self, claim: Any) -> bool:
         return await run_claimed_platform_job(claim, backend=self.bridge)
@@ -537,11 +596,15 @@ class ApiExecutor(PoolWorker):
             if expected_generation is not None and generation != expected_generation:
                 return None
             if self._reconciled_generation == generation:
-                return {"workflow_requests": {}, "services": [], "platform_jobs": []}
+                return {
+                    "workflow_requests": {}, "services": [], "platform_jobs": [], "agent_runs": {},
+                }
             snapshot = await self.bridge.pool.reconcile_inventory(self.bridge.inventory)
             if expected_generation is not None and self.bridge.lease.session_generation != generation:
                 return None
             self.bridge.reject_missing_platform_routes(self.bridge.inventory)
+            assert self.bridge.agents is not None
+            await self.bridge.agents.reject_missing(self.bridge.inventory)
             self._reconciled_generation = generation
             return snapshot
 
@@ -551,6 +614,13 @@ class ApiExecutor(PoolWorker):
             self.admission.hold(execution_id, request_bytes, workflow=True)
             self.admission.started(execution_id)
             self._remember_started(execution_id)
+        agents = self.bridge.agents
+        assert agents is not None
+        for route_id, (run_id, request_bytes) in snapshot["agent_runs"].items():
+            if agents.tracks(route_id):
+                # A same-owner reconnect: its original wait still runs.
+                continue
+            self._wait_for_adopted_agent_run(agents.adopt(route_id, run_id), request_bytes)
         if self._service_claim_loop is None:
             return
         for owned in snapshot["services"]:
@@ -572,6 +642,54 @@ class ApiExecutor(PoolWorker):
             asyncio.create_task(
                 self._run_platform_job(claim), name=f"pool-platform-job-{claim.id}"
             )
+
+    def _wait_for_adopted_agent_run(self, route: AgentRoute, request_bytes: int) -> None:
+        """Hold an adopted child's memory and count it as a run until it ends."""
+        assert self.admission is not None and self.bridge.agents is not None
+        key = f"agent_run:{route.run_id}"
+        self.admission.hold(key, request_bytes)
+
+        async def wait() -> None:
+            try:
+                assert self.bridge.agents is not None
+                await self.bridge.agents.supervise(route)
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Adopted agent run failed", extra={"run_id": str(route.run_id)}
+                )
+            finally:
+                assert self.admission is not None
+                self.admission.release(key)
+
+        task = asyncio.create_task(wait(), name=f"pool-adopted-agent-{route.run_id}")
+        in_flight = self._tasks["agent.run"]
+        in_flight.add(task)
+        task.add_done_callback(in_flight.discard)
+
+    async def _drain(self) -> None:
+        """Drain, then end the agent runs the drain grace did not outlast.
+
+        The workflow pool terminates its children at the drain deadline with a
+        recorded shutdown outcome. Agent children get the same treatment here,
+        before ``_retire`` tells the launcher to stop (which kills them with no
+        exit report). An owner that lost the launcher or is handing it over
+        leaves its children alone: the next owner adopts or ends them.
+        """
+        from src.worker.remote.remote_pool import DRAIN_DEADLINE_ERROR, DRAIN_DEADLINE_ERROR_TYPE
+
+        await super()._drain()
+        agents = self.bridge.agents
+        if (
+            agents is None
+            or not agents.routes
+            or self._lost
+            or self.bridge.handoff
+            or not await owns_remote_session(self.bridge.lease)
+        ):
+            return
+        await agents.terminate_active_runs(
+            error_type=DRAIN_DEADLINE_ERROR_TYPE, error=DRAIN_DEADLINE_ERROR
+        )
 
     async def _retire(self) -> None:
         """Only a drained owner can retire the physical launcher.
@@ -702,6 +820,8 @@ class RemoteSession:
     async def detach(self) -> None:
         """Drop an API owner after transport closure without killing children."""
         self.begin_handoff()
+        if self.bridge.agents is not None:
+            self.bridge.agents.detach()
         await self.release_lease()
         self.renewal.cancel()
         await asyncio.gather(self.renewal, return_exceptions=True)
@@ -722,6 +842,7 @@ class RemoteControlHost:
         self.agent_executor: Any = None
         self.agent_task: asyncio.Task[Any] | None = None
         self.stopping = False
+        self.agents_prewarmed_at: float | None = None
 
     async def start(self) -> None:
         """Start the single API-resident agent/summary executor for this replica."""
@@ -754,6 +875,31 @@ class RemoteControlHost:
         ), return_exceptions=True)
         if self.agent_task is not None:
             await asyncio.gather(self.agent_task, return_exceptions=True)
+
+    async def prewarm_agents(self) -> None:
+        """Ask every connected launcher to start its agent template, at most
+        once per ``AGENT_PREWARM_INTERVAL_SECONDS`` on this replica.
+
+        A launcher that cannot (memory pressure, a lost connection) is
+        skipped: its next agent run builds the template instead.
+        """
+        now = time.monotonic()
+        if (
+            self.agents_prewarmed_at is not None
+            and now - self.agents_prewarmed_at < AGENT_PREWARM_INTERVAL_SECONDS
+        ):
+            return
+        self.agents_prewarmed_at = now
+        bridges = [session.bridge for session in self.sessions.values() if session.bridge.connected]
+        results = await asyncio.gather(
+            *(bridge.request("agent_prewarm", {}) for bridge in bridges), return_exceptions=True
+        )
+        for bridge, result in zip(bridges, results):
+            if isinstance(result, Exception):
+                logging.getLogger(__name__).info(
+                    "Agent template pre-warm skipped",
+                    extra={"hostname": bridge.hostname, "error": str(result)},
+                )
 
     async def connect(self, socket: WebSocket) -> tuple[RemoteSession, FragmentAssembler]:
         await socket.accept()
@@ -814,7 +960,7 @@ class RemoteControlHost:
                 await register_static_worker(
                     hostname=hello.hostname,
                     incarnation_id=hello.incarnation_id,
-                    supported_handlers=["workflow.execute"],
+                    supported_handlers=list(REMOTE_WORKER_HANDLER_NAMES),
                 )
         lease = await acquire_remote_owner(
             worker_id=hello.incarnation_id,
@@ -873,6 +1019,20 @@ async def start_remote_control_host(_application: Any) -> None:
     if _host is None:
         _host = RemoteControlHost()
         await _host.start()
+
+
+_prewarms: set[asyncio.Task[None]] = set()
+
+
+def schedule_agent_prewarm() -> None:
+    """Pre-warm launcher agent templates in the background (see
+    :meth:`RemoteControlHost.prewarm_agents`); the caller never waits."""
+    if _host is None or _host.stopping:
+        return
+    task = asyncio.create_task(_host.prewarm_agents(), name="agent-prewarm")
+    _prewarms.add(task)
+    task.add_done_callback(_prewarms.discard)
+    task.add_done_callback(_observe_task)
 
 
 async def stop_remote_control_host() -> None:
