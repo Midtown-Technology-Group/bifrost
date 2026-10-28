@@ -81,11 +81,11 @@ async def test_overlapping_document_merges_preserve_disjoint_fields(
                             {"blocker": blocker, "waiter": waiter},
                         ):
                             if task.done():
-                                await task
+                                assert (await task).id == doc_id
                                 pytest.fail("second writer finished before first writer committed")
                 await a.commit()
                 async with asyncio.timeout(5):
-                    await task
+                    assert (await task).data == {"left": 1, "right": 1}
             finally:
                 if not task.done():
                     task.cancel()
