@@ -49,7 +49,6 @@ async def registration_redis(monkeypatch):
     from tests.conftest import TEST_REDIS_URL
 
     client = redis.from_url(TEST_REDIS_URL, decode_responses=True)
-    await client.ping()
     monkeypatch.setattr(
         "src.services.passkey_service.get_shared_redis", AsyncMock(return_value=client)
     )
