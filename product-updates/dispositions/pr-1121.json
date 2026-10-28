@@ -1,0 +1,14 @@
+{
+  "key": "pr:1121",
+  "classification": "other",
+  "entry_ids": [],
+  "category": "fix",
+  "summary": "First-run setup can grant the first administrator Secrets Reader everywhere with explicit consent; the option is off by default.",
+  "review": {
+    "status": "draft",
+    "evidence": [
+      "https://github.com/gobifrost/bifrost/issues/1120",
+      "https://github.com/gobifrost/bifrost/pull/1121"
+    ]
+  }
+}
