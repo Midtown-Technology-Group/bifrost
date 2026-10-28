@@ -53,7 +53,7 @@ remove their own test databases. Fake passkey verification exercises transaction
 boundaries without real authenticators or secrets.
 
 Run the real first-run browser journey on the disposable test stack with
-`./test.sh client e2e --config=playwright.first-run.config.ts`. It needs a fresh
+`./test.sh client e2e --config=e2e/first-user-setup.config.ts`. It needs a fresh
 database, so it has no dependency on the normal browser global setup (which
 creates users before tests). Component and service tests cover declined consent
 and forwarding the choice through both authentication methods.

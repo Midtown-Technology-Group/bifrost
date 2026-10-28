@@ -1,6 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 
-// Run through ./test.sh client e2e --config=playwright.first-run.config.ts.
+const results = fileURLToPath(
+	new URL("../playwright-results/", import.meta.url),
+);
+
+// Run through ./test.sh client e2e --config=e2e/first-user-setup.config.ts.
 // The normal global setup creates users before tests, so bootstrap needs its
 // own fresh-database journey. No retries or authenticated storage state.
 export default defineConfig({
@@ -8,13 +13,10 @@ export default defineConfig({
 		sourceRevision: process.env.TEST_SOURCE_REVISION ?? "unrecorded",
 		sourceDirty: process.env.TEST_SOURCE_DIRTY === "true",
 	},
-	reporter: [
-		["list"],
-		["json", { outputFile: "playwright-results/results.json" }],
-	],
-	testDir: "./e2e/preview",
+	reporter: [["list"], ["json", { outputFile: `${results}/results.json` }]],
+	testDir: "./preview",
 	testMatch: "first-user-setup.unauth.spec.ts",
-	outputDir: "./playwright-results/first-run",
+	outputDir: `${results}/first-run`,
 	retries: 0,
 	workers: 1,
 	forbidOnly: true,
