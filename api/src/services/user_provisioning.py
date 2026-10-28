@@ -51,6 +51,9 @@ async def ensure_user_provisioned(
     db: AsyncSession,
     email: str,
     name: str | None = None,
+    *,
+    commit: bool = True,
+    grant_secrets_reader: bool = False,
 ) -> ProvisioningResult:
     """
     Ensure user exists in the system, creating if necessary.
@@ -82,6 +85,12 @@ async def ensure_user_provisioned(
     if is_identity_email(email):
         raise ValueError("This email domain is reserved")
 
+    from src.services.first_user_setup import complete_first_user_setup, setup_available
+
+    is_first_user = await setup_available(db, lock=True)
+    if grant_secrets_reader and not is_first_user:
+        raise ValueError("Secrets Reader consent is only available during first-time setup")
+
     user_repo = UserRepository(db)
     org_repo = OrganizationRepository(db)
 
@@ -100,8 +109,6 @@ async def ensure_user_provisioned(
     # User doesn't exist - check if first user
     logger.info(f"User {log_safe(email)} not found, checking provisioning rules")
 
-    has_users = await user_repo.has_any_users()
-    is_first_user = not has_users
 
     if is_first_user:
         # First user in system - create as superuser
@@ -113,8 +120,10 @@ async def ensure_user_provisioned(
             is_superuser=True,
             organization_id=PROVIDER_ORG_ID,
         )
-        await db.commit()
-        await db.refresh(user)
+        await complete_first_user_setup(db, user, grant_secrets_reader=grant_secrets_reader)
+        if commit:
+            await db.commit()
+            await db.refresh(user)
 
         logger.info(f"Successfully created first user as superuser: {log_safe(email)}")
 
@@ -151,8 +160,9 @@ async def ensure_user_provisioned(
         is_superuser=False,
         organization_id=matched_org.id,
     )
-    await db.commit()
-    await db.refresh(user)
+    if commit:
+        await db.commit()
+        await db.refresh(user)
 
     logger.info(f"Auto-created ORG user: {log_safe(email)} for org {matched_org.id}")
 

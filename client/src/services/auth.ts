@@ -11,11 +11,13 @@ import type { components } from "@/lib/v1";
 // Types - Auto-generated from OpenAPI spec
 // =============================================================================
 
-export type OAuthProvider = components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"];
+export type OAuthProvider =
+	components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"];
 export type AuthStatus = components["schemas"]["AuthStatusResponse"];
 export type OAuthInitResponse = components["schemas"]["OAuthInitResponse"];
 export type MFAStatus = components["schemas"]["MFAStatusResponse"];
-export type TOTPSetupResponse = components["schemas"]["src__routers__auth__MFASetupResponse"];
+export type TOTPSetupResponse =
+	components["schemas"]["src__routers__auth__MFASetupResponse"];
 export type TOTPVerifyResponse = components["schemas"]["MFAVerifyResponse"];
 export type RecoveryCodesCount =
 	components["schemas"]["RecoveryCodesCountResponse"];
@@ -157,11 +159,17 @@ export async function registerUser(
 	email: string,
 	password: string,
 	name?: string,
+	grantSecretsReader = false,
 ): Promise<void> {
 	const res = await fetch("/auth/register", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ email, password, name }),
+		body: JSON.stringify({
+			email,
+			password,
+			name,
+			grant_secrets_reader: grantSecretsReader,
+		} satisfies components["schemas"]["RegisterRequest"]),
 	});
 
 	if (!res.ok) {

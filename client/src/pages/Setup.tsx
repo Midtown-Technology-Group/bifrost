@@ -16,6 +16,7 @@ import { registerUser } from "@/services/auth";
 import { setupWithPasskey } from "@/services/passkeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
 	Card,
@@ -50,6 +51,7 @@ export function Setup() {
 
 	const [email, setEmail] = useState("");
 	const [name, setName] = useState("");
+	const [grantSecretsReader, setGrantSecretsReader] = useState(false);
 
 	useEffect(() => {
 		if (mode === "auth") headingRef.current?.focus();
@@ -66,7 +68,12 @@ export function Setup() {
 		setError(null);
 		setIsLoading(true);
 		try {
-			const result = await setupWithPasskey(email, name);
+			const result = await setupWithPasskey(
+				email,
+				name,
+				undefined,
+				grantSecretsReader,
+			);
 			completeLoginWithToken(result.access_token);
 			await checkAuthStatus();
 			toast.success("Account created successfully!");
@@ -83,7 +90,7 @@ export function Setup() {
 		setError(null);
 		setIsLoading(true);
 		try {
-			await registerUser(email, password, name);
+			await registerUser(email, password, name, grantSecretsReader);
 			await checkAuthStatus();
 			navigate("/login", {
 				state: { message: "Account created! Please sign in." },
@@ -144,6 +151,30 @@ export function Setup() {
 						required
 					/>
 				</div>
+			</div>
+			<div className="space-y-2 rounded-md border p-3">
+				<div className="flex items-center gap-2">
+					<Checkbox
+						id="grant-secrets-reader"
+						checked={grantSecretsReader}
+						onCheckedChange={(checked) =>
+							setGrantSecretsReader(checked === true)
+						}
+						aria-describedby="secrets-reader-scope"
+					/>
+					<Label htmlFor="grant-secrets-reader">
+						Grant me Secrets Reader
+					</Label>
+				</div>
+				<p
+					id="secrets-reader-scope"
+					className="text-sm text-muted-foreground"
+				>
+					Optional. Allows reading decrypted secrets everywhere:
+					Global, the provider organization, and all managed
+					organizations. If left off, another administrator must grant
+					this role later. You cannot change your own roles.
+				</p>
 			</div>
 			<Button
 				type="submit"

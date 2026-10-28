@@ -437,6 +437,7 @@ class PasskeyService:
         self,
         email: str,
         name: str | None = None,
+        grant_secrets_reader: bool = False,
     ) -> tuple[str, dict]:
         """
         Generate WebAuthn options for first-time platform setup (passwordless).
@@ -454,12 +455,10 @@ class PasskeyService:
         Raises:
             ValueError: If users already exist (not first-time setup) or email in use
         """
-        from src.repositories.users import UserRepository
-
-        user_repo = UserRepository(self.db)
+        from src.services.first_user_setup import setup_available
 
         # Validate first-user scenario
-        if await user_repo.has_any_users():
+        if not await setup_available(self.db):
             raise ValueError("Passkey setup registration is only available during first-time platform setup")
 
         # Check email not already registered (race condition protection)
@@ -490,6 +489,7 @@ class PasskeyService:
         redis = await get_shared_redis()
         setup_data = {
             "email": email,
+            "grant_secrets_reader": grant_secrets_reader,
             "name": name or email.split("@")[0],
             "webauthn_user_id": bytes_to_base64url(temp_user_id),
             "challenge": bytes_to_base64url(options.challenge),
@@ -522,15 +522,14 @@ class PasskeyService:
         Raises:
             ValueError: If token invalid, expired, or verification fails
         """
-        from src.repositories.users import UserRepository
+        from src.services.first_user_setup import complete_first_user_setup, setup_available
 
         # Get and delete setup data from Redis (single-use)
         redis = await get_shared_redis()
         setup_key = f"{PASSKEY_SETUP_TOKEN_PREFIX}{registration_token}"
-        setup_data_json = await redis.get(setup_key)
+        setup_data_json = await redis.getdel(setup_key)
         if not setup_data_json:
             raise ValueError("Registration token not found or expired")
-        await redis.delete(setup_key)
 
         setup_data = json.loads(setup_data_json)
         expected_challenge = base64url_to_bytes(setup_data["challenge"])
@@ -550,8 +549,7 @@ class PasskeyService:
             raise ValueError(f"Registration verification failed: {e}") from e
 
         # Double-check first-user scenario (race condition protection)
-        user_repo = UserRepository(self.db)
-        if await user_repo.has_any_users():
+        if not await setup_available(self.db, lock=True):
             raise ValueError("Another user was created during registration")
 
         # Create user as Platform admin (first user)
@@ -592,4 +590,7 @@ class PasskeyService:
         self.db.add(passkey)
         await self.db.flush()
 
+        await complete_first_user_setup(
+            self.db, user, grant_secrets_reader=setup_data.get("grant_secrets_reader", False),
+        )
         return user, passkey

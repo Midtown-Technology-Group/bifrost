@@ -4,7 +4,7 @@ Authentication and MFA contract models for Bifrost.
 
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, StrictBool
 
 if TYPE_CHECKING:
     pass
@@ -144,3 +144,13 @@ class DeviceTokenResponse(BaseModel):
 class DeviceTokenErrorResponse(BaseModel):
     """Error response for device token request."""
     error: str  # "authorization_pending", "expired_token", "access_denied"
+
+
+class RegisterRequest(BaseModel):
+    """Password registration; secret access consent applies only to fresh setup."""
+    email: EmailStr
+    password: str
+    name: str | None = None
+    grant_secrets_reader: StrictBool = Field(
+        default=False, description="Explicit first-run consent to Secrets Reader everywhere: Global, provider and all managed organizations",
+    )

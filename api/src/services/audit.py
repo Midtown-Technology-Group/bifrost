@@ -3,8 +3,8 @@ Audit log emission helper.
 
 Call emit_audit() from any code path that performs an auditable action.
 The helper reads the ActorContext from audit_context.py, writes an
-audit_logs row, and swallows its own errors so audit failures never break
-the primary operation.
+audit_logs row. Events are best-effort unless the caller requests strict
+persistence with its primary transaction.
 
 For HTTP-originated calls, the FastAPI audit dependency populates the
 ActorContext automatically, so handlers just call
@@ -55,6 +55,7 @@ async def emit_audit(
     outcome: Outcome = "success",
     details: dict[str, Any] | None = None,
     actor_override: ActorContext | None = None,
+    strict: bool = False,
 ) -> None:
     """
     Record an audit log entry for the current actor.
@@ -70,14 +71,16 @@ async def emit_audit(
         actor_override: For worker/CLI/scheduler callers that don't have an
             HTTP actor context. When passed, used instead of current_actor().
 
-    Audit failures are logged and swallowed — they must not break the
-    caller's primary operation.
+    Audit failures are best-effort unless strict=True. Security-sensitive
+    callers use strict mode to commit the mutation and its audit atomically.
     """
     actor = actor_override or current_actor()
 
     # No actor context = non-HTTP path without explicit override. Skip silently.
     # This avoids logging worker-originated changes as if they were user-initiated.
     if actor is None:
+        if strict:
+            raise RuntimeError("Strict audit event requires an actor context")
         return
 
     operation_id = _operation_id_from_current_scope()
@@ -111,6 +114,8 @@ async def emit_audit(
     try:
         await _insert(actor.user_id)
     except IntegrityError:
+        if strict:
+            raise
         # The actor's user_id points at a user that no longer exists (a stale
         # token after the user was deleted). Record the event without an actor
         # rather than dropping it.
@@ -125,6 +130,8 @@ async def emit_audit(
             logger.warning(
                 "Failed to emit audit event %s: %s", action, exc, exc_info=True
             )
+            if strict:
+                raise
     except Exception as exc:
         # Audit failures must never break the primary operation.
         logger.warning(
@@ -133,6 +140,8 @@ async def emit_audit(
             exc,
             exc_info=True,
         )
+        if strict:
+            raise
 
 
 async def emit_file_policy_deny(

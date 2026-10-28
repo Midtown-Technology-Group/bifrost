@@ -2,11 +2,10 @@
 Unit tests for the audit emission helper and actor context.
 """
 
-from uuid import uuid4
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
-
 from src.services.audit import (
     emit_audit,
     emit_file_policy_deny,
@@ -282,3 +281,22 @@ async def test_table_policy_deny_uses_canonical_table_payload(monkeypatch):
         },
         actor_override=actor,
     )
+
+
+@pytest.mark.asyncio
+async def test_strict_audit_requires_an_actor():
+    with pytest.raises(RuntimeError, match="actor context"):
+        await emit_audit(_session_mock(), "auth.setup_completed", strict=True)
+
+
+@pytest.mark.asyncio
+async def test_strict_audit_does_not_drop_actor_on_integrity_failure(monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+    from src.repositories.audit_logs import AuditLogRepository
+
+    create = AsyncMock(side_effect=IntegrityError("test insert", {}, RuntimeError("test")))
+    monkeypatch.setattr(AuditLogRepository, "create", create)
+    set_actor(ActorContext(user_id=uuid4(), organization_id=None))
+    with pytest.raises(IntegrityError):
+        await emit_audit(_session_mock(), "auth.setup_completed", strict=True)
+    assert create.await_count == 1

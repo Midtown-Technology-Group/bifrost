@@ -22,7 +22,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.device_auth import decide_device_login
@@ -82,6 +82,8 @@ from src.core.security import (
     verify_password,
 )
 from src.repositories.users import UserRepository
+from src.models.contracts.auth import RegisterRequest
+from src.services.first_user_setup import setup_available
 from src.services.user_provisioning import ensure_user_provisioned, get_user_roles
 from shared.external_access import (
     resolve_provider_org_claim,
@@ -308,13 +310,6 @@ class UserResponse(BaseModel):
     is_verified: bool
     organization_id: str | None
     roles: list[str] = []
-
-
-class UserCreate(BaseModel):
-    """User creation request model."""
-    email: EmailStr
-    password: str
-    name: str | None = None
 
 
 async def _refuse_login(
@@ -1353,7 +1348,7 @@ async def admin_revoke_user_sessions(
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(
     request: Request,
-    user_data: UserCreate,
+    user_data: RegisterRequest,
     db: DbSession = None,
 ) -> UserResponse:
     """
@@ -1387,7 +1382,10 @@ async def register_user(
     user_repo = UserRepository(db)
 
     # Check if this is first-time setup (no users exist)
-    has_users = await user_repo.has_any_users()
+    has_users = not await setup_available(db, lock=True)
+
+    if has_users and user_data.grant_secrets_reader:
+        raise HTTPException(status_code=400, detail="Secrets Reader consent is only available during first-time setup")
 
     # Allow registration if:
     # 1. First user (system bootstrap) - always allowed
@@ -1444,6 +1442,8 @@ async def register_user(
             db=db,
             email=user_data.email,
             name=user_data.name,
+            commit=False,
+            grant_secrets_reader=user_data.grant_secrets_reader,
         )
     except ValueError as e:
         raise HTTPException(
@@ -1494,8 +1494,7 @@ async def get_auth_status(db: DbSession = None) -> AuthStatusResponse:
     from src.services.oauth_config_service import OAuthConfigService
 
     settings = get_settings()
-    user_repo = UserRepository(db)
-    has_users = await user_repo.has_any_users()
+    has_users = not await setup_available(db)
 
     # Get available OAuth providers from database config
     oauth_config_service = OAuthConfigService(db)
@@ -1801,6 +1800,7 @@ async def setup_passkey_options(
         registration_token, options = await passkey_service.generate_setup_registration_options(
             email=setup_request.email,
             name=setup_request.name,
+            grant_secrets_reader=setup_request.grant_secrets_reader,
         )
     except ValueError as e:
         raise HTTPException(

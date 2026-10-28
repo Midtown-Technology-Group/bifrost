@@ -15,6 +15,7 @@ import type {
 	PublicKeyCredentialCreationOptionsJSON,
 	PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/browser";
+import type { components } from "@/lib/v1";
 import { authFetch } from "@/lib/api-client";
 
 // =============================================================================
@@ -269,12 +270,17 @@ export async function setupWithPasskey(
 	email: string,
 	name?: string,
 	deviceName?: string,
+	grantSecretsReader = false,
 ): Promise<SetupPasskeyResult> {
 	// Step 1: Get registration options from server
 	const optionsRes = await fetch("/auth/setup/passkey/options", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ email, name }),
+		body: JSON.stringify({
+			email,
+			name,
+			grant_secrets_reader: grantSecretsReader,
+		} satisfies components["schemas"]["SetupPasskeyOptionsRequest"]),
 	});
 
 	if (!optionsRes.ok) {

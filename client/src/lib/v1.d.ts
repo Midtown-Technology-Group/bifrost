@@ -25272,6 +25272,27 @@ export interface components {
             password?: string | null;
         };
         /**
+         * RegisterRequest
+         * @description Password registration; secret access consent applies only to fresh setup.
+         */
+        RegisterRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Grant Secrets Reader
+             * @description Explicit first-run consent to Secrets Reader everywhere: Global, provider and all managed organizations
+             * @default false
+             */
+            grant_secrets_reader: boolean;
+        };
+        /**
          * RegisterWorkflowRequest
          * @description Request model for explicit workflow registration.
          */
@@ -27207,6 +27228,12 @@ export interface components {
              * @description Display name for the user
              */
             name?: string | null;
+            /**
+             * Grant Secrets Reader
+             * @description Explicit first-run consent to Secrets Reader everywhere: Global, provider and all managed organizations
+             * @default false
+             */
+            grant_secrets_reader: boolean;
         };
         /**
          * SetupPasskeyOptionsResponse
@@ -29467,6 +29494,45 @@ export interface components {
             rows: components["schemas"]["AccessRow"][];
         };
         /**
+         * UserCreate
+         * @description Input for creating a user.
+         */
+        UserCreate: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Name */
+            name?: string | null;
+            /** Password */
+            password?: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Is Superuser
+             * @default false
+             */
+            is_superuser: boolean;
+            /**
+             * Is External
+             * @default false
+             */
+            is_external: boolean;
+            /** Organization Id */
+            organization_id?: string | null;
+            /**
+             * Invite
+             * @default false
+             */
+            invite: boolean;
+            /** Trigger Automation */
+            trigger_automation?: boolean | null;
+        };
+        /**
          * UserFormsResponse
          * @description Response model for getting forms accessible to a user
          */
@@ -31302,45 +31368,6 @@ export interface components {
             } | null;
         };
         /**
-         * UserCreate
-         * @description Input for creating a user.
-         */
-        src__models__contracts__users__UserCreate: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Name */
-            name?: string | null;
-            /** Password */
-            password?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Is Superuser
-             * @default false
-             */
-            is_superuser: boolean;
-            /**
-             * Is External
-             * @default false
-             */
-            is_external: boolean;
-            /** Organization Id */
-            organization_id?: string | null;
-            /**
-             * Invite
-             * @default false
-             */
-            invite: boolean;
-            /** Trigger Automation */
-            trigger_automation?: boolean | null;
-        };
-        /**
          * MFASetupResponse
          * @description MFA setup response with secret.
          */
@@ -31377,21 +31404,6 @@ export interface components {
             trust_device: boolean;
             /** Device Name */
             device_name?: string | null;
-        };
-        /**
-         * UserCreate
-         * @description User creation request model.
-         */
-        src__routers__auth__UserCreate: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Password */
-            password: string;
-            /** Name */
-            name?: string | null;
         };
         /**
          * MFASetupResponse
@@ -32016,7 +32028,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__auth__UserCreate"];
+                "application/json": components["schemas"]["RegisterRequest"];
             };
         };
         responses: {
@@ -33137,7 +33149,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__users__UserCreate"];
+                "application/json": components["schemas"]["UserCreate"];
             };
         };
         responses: {

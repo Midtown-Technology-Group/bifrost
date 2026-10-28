@@ -95,6 +95,9 @@ def do_run_migrations(connection: Connection) -> None:
     context.configure(connection=connection, target_metadata=target_metadata)
 
     with context.begin_transaction():
+        # Capture this before the first migration writes a revision. A database
+        # with an existing revision is an upgrade even if every human was deleted.
+        config.attributes["bifrost_fresh_install"] = not context.get_context().get_current_heads()
         context.run_migrations()
 
 

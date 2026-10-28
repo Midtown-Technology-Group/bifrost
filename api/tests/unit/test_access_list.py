@@ -2008,6 +2008,9 @@ _ELEVATED_SITES: dict[str, tuple[int, str | tuple[str, ...]]] = {
     "src.services.table_policy_loader.load_resolved_table_policies": (1, "internal_authorized_resource"),
     "src.services.user_access_map._place_for": (1, "current_role_derivation"),
     "src.services.user_access_map.build_access_map": (2, "current_role_derivation"),
+    # Credential registration holds the persistent first-run gate; this check
+    # validates the newly created provider admin, never a caller's admin claim.
+    "src.services.first_user_setup.complete_first_user_setup": (1, "internal_authorized_resource"),
     "src.services.user_provisioning.ensure_user_provisioned": (4, "internal_authorized_resource"),
     "src.services.user_role_assignments.authorization_summary": (2, "current_role_derivation"),
 }

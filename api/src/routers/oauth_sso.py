@@ -374,6 +374,7 @@ async def oauth_callback(
                 db=db,
                 email=user_info.email,
                 name=user_info.name,
+                commit=False,
             )
             user = result.user
 

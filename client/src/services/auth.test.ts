@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	clearPreferredSsoRedirectAttempt,
+	registerUser,
 	getAuthStatus,
 	PREFERRED_SSO_REDIRECT_ATTEMPTED_KEY,
 } from "./auth";
@@ -38,4 +39,29 @@ describe("auth service", () => {
 			sessionStorage.getItem(PREFERRED_SSO_REDIRECT_ATTEMPTED_KEY),
 		).toBeNull();
 	});
+});
+
+describe("first-run password consent", () => {
+	it.each([undefined, false, true])(
+		"sends explicit consent %s without role or user targets",
+		async (consent) => {
+			const fetchMock = vi
+				.spyOn(globalThis, "fetch")
+				.mockResolvedValue(new Response("{}", { status: 201 }));
+			await registerUser(
+				"first@example.com",
+				"test-password",
+				"First",
+				consent,
+			);
+			expect(
+				JSON.parse(fetchMock.mock.calls.at(-1)![1]!.body as string),
+			).toEqual({
+				email: "first@example.com",
+				password: "test-password",
+				name: "First",
+				grant_secrets_reader: consent ?? false,
+			});
+		},
+	);
 });

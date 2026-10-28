@@ -265,3 +265,13 @@ class UserRoleBoundary(Base):
             postgresql_where=text("organization_id IS NULL"),
         ),
     )
+
+
+class PlatformSetup(Base):
+    """One durable bootstrap gate, independent of user deletion and audit retention."""
+
+    __tablename__ = "platform_setup"
+    __table_args__ = (CheckConstraint("id = true", name="ck_platform_setup_singleton"),)
+
+    id: Mapped[bool] = mapped_column(Boolean, primary_key=True, default=True)
+    completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

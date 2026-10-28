@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { registerInviteWithPasskey } from "./passkeys";
+import { registerInviteWithPasskey, setupWithPasskey } from "./passkeys";
 import { startRegistration } from "@simplewebauthn/browser";
 
 vi.mock("@simplewebauthn/browser", () => ({
@@ -78,4 +78,43 @@ describe("registerInviteWithPasskey", () => {
 		);
 		expect(startRegistration).not.toHaveBeenCalled();
 	});
+});
+
+describe("first-run passkey consent", () => {
+	it.each([undefined, false, true])(
+		"binds consent %s to the options request",
+		async (consent) => {
+			vi.mocked(startRegistration).mockResolvedValue({
+				id: "credential-id",
+			} as Awaited<ReturnType<typeof startRegistration>>);
+			const fetchMock = vi
+				.fn()
+				.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({
+						registration_token: "setup-token",
+						options: { challenge: "abc" },
+					}),
+				})
+				.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({ access_token: "access" }),
+				});
+			vi.stubGlobal("fetch", fetchMock);
+			await setupWithPasskey(
+				"first@example.com",
+				"First",
+				undefined,
+				consent,
+			);
+			expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+				email: "first@example.com",
+				name: "First",
+				grant_secrets_reader: consent ?? false,
+			});
+			expect(
+				JSON.parse(fetchMock.mock.calls[1][1].body),
+			).not.toHaveProperty("grant_secrets_reader");
+		},
+	);
 });

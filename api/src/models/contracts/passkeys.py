@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 
 
 # =============================================================================
@@ -142,6 +142,10 @@ class SetupPasskeyOptionsRequest(BaseModel):
         default=None,
         description="Display name for the user",
         max_length=255,
+    )
+
+    grant_secrets_reader: StrictBool = Field(
+        default=False, description="Explicit first-run consent to Secrets Reader everywhere: Global, provider and all managed organizations",
     )
 
 
