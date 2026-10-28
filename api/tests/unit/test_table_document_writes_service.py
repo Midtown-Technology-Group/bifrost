@@ -206,7 +206,7 @@ async def test_insert_legacy_upsert_merges_and_publishes_update(monkeypatch):
         def __init__(self, *args, **kwargs):
             pass
 
-        async def get(self, doc_id):
+        async def get_for_update(self, doc_id):
             assert doc_id == "doc-1"
             return existing
 
@@ -358,7 +358,7 @@ async def test_update_missing_document_404s(monkeypatch):
         def __init__(self, *args, **kwargs):
             pass
 
-        async def get(self, doc_id):
+        async def get_for_update(self, doc_id):
             return None
 
     monkeypatch.setattr(writes, "DocumentRepository", FakeRepo)
@@ -383,7 +383,7 @@ async def test_update_policy_deny_audits_commits_and_403s(monkeypatch, legacy_up
         def __init__(self, *args, **kwargs):
             pass
 
-        async def get(self, doc_id):
+        async def get_for_update(self, doc_id):
             return existing
 
         async def update(self, *args, **kwargs):
