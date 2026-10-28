@@ -88,9 +88,7 @@ describe("Setup consent submission", () => {
 						name: "Grant me Secrets Reader",
 					}),
 				);
-			await user.click(
-				screen.getByRole("button", { name: "Continue", exact: true }),
-			);
+			await user.click(screen.getByRole("button", { name: "Continue" }));
 			await user.click(
 				screen.getByRole("button", { name: "Set up passkey" }),
 			);
@@ -113,9 +111,7 @@ describe("Setup consent submission", () => {
 		await user.click(
 			screen.getByRole("checkbox", { name: "Grant me Secrets Reader" }),
 		);
-		await user.click(
-			screen.getByRole("button", { name: "Continue", exact: true }),
-		);
+		await user.click(screen.getByRole("button", { name: "Continue" }));
 		await user.click(
 			screen.getByRole("button", { name: "Use password instead" }),
 		);
@@ -128,7 +124,7 @@ describe("Setup consent submission", () => {
 			"test-password",
 		);
 		await user.click(
-			screen.getByRole("button", { name: "Create account", exact: true }),
+			screen.getByRole("button", { name: "Create account" }),
 		);
 		expect(registerUser).toHaveBeenCalledWith(
 			"first@example.com",

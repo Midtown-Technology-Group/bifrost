@@ -4,6 +4,14 @@ import { defineConfig, devices } from "@playwright/test";
 // The normal global setup creates users before tests, so bootstrap needs its
 // own fresh-database journey. No retries or authenticated storage state.
 export default defineConfig({
+	metadata: {
+		sourceRevision: process.env.TEST_SOURCE_REVISION ?? "unrecorded",
+		sourceDirty: process.env.TEST_SOURCE_DIRTY === "true",
+	},
+	reporter: [
+		["list"],
+		["json", { outputFile: "playwright-results/results.json" }],
+	],
 	testDir: "./e2e/preview",
 	testMatch: "first-user-setup.unauth.spec.ts",
 	outputDir: "./playwright-results/first-run",
