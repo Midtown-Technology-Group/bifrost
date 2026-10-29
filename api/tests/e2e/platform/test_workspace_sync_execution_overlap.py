@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -241,7 +242,7 @@ async def test_sync_updates_queued_code_without_replacing_running_imports(
                 cancelled = e2e_client.post(f"/api/executions/{execution_id}/cancel", headers=headers)
                 assert cancelled.status_code in {200, 202}, cancelled.text
                 assert poll_until(
-                    lambda: _execution(e2e_client, headers, execution_id), max_wait=30,
+                    partial(_execution, e2e_client, headers, execution_id), max_wait=30,
                 ), f"execution {execution_id} did not stop during cleanup"
         for path in paths:
             deleted = e2e_client.delete("/api/files/editor", params={"path": path}, headers=headers)
