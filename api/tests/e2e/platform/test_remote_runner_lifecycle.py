@@ -75,9 +75,9 @@ class _TestLauncher:
                     secret=get_settings().secret_key,
                 )
                 await self._launcher.start()
+                await self._launcher.hello(self._launcher.requirements)
             else:
-                self._launcher.socket = socket
-            await self._launcher.hello(self._launcher.requirements)
+                await self._launcher.reconnect(socket, self._launcher.requirements)
             await self._launcher.send(
                 {"event": "inventory", "inventory": self._launcher.inventory()}
             )
@@ -112,10 +112,10 @@ class _TestLauncher:
         if self._launcher is not None:
             await self._launcher.stop()
 
-    async def drain(self) -> None:
-        """Request the canonical drain while control transport remains live."""
-        if self._launcher is not None and self._socket is not None:
-            await self._launcher.begin_drain()
+    async def request_drain(self) -> None:
+        """Tell the API owner to drain; fixture teardown owns local shutdown."""
+        assert self._launcher is not None
+        await self._launcher.send({"event": "draining"})
 
     async def _receive(self, socket: Any) -> None:
         assert self._launcher is not None
@@ -228,26 +228,26 @@ async def remote_launcher(async_session_factory, e2e_api_url):
         yield launcher, identity.incarnation_id
     finally:
         try:
-            # A plain socket close is only a transport event and intentionally
-            # does not retire a physical worker. Drain while the receiver is
-            # still live so the API-owned executor can acknowledge retirement.
-            await launcher.drain()
-            await _wait_for(retired, timeout=20, description="test remote launcher retirement")
-        finally:
             try:
-                await launcher.stop()
+                # Use the supported transport event so the API-owned executor
+                # begins its physical drain before the launcher socket closes.
+                await launcher.request_drain()
+                await _wait_for(retired, timeout=20, description="test remote launcher retirement")
             finally:
-                # A failed retirement must fail this test without leaving every
-                # later workflow test without an executor.
-                async with async_session_factory() as db:
-                    for worker_id, handlers in removed_capabilities.items():
-                        worker = await db.get(ExecutionWorker, worker_id)
-                        if worker is not None:
-                            worker.supported_handlers = handlers
-                    await db.execute(
-                        delete(ExecutionWorker).where(ExecutionWorker.id == identity.incarnation_id)
-                    )
-                    await db.commit()
+                await launcher.stop()
+        finally:
+            # Always give the stack's executors their workflow capability
+            # back: a failed retirement must fail this test, not leave every
+            # later workflow test without an executor.
+            async with async_session_factory() as db:
+                for worker_id, handlers in removed_capabilities.items():
+                    worker = await db.get(ExecutionWorker, worker_id)
+                    if worker is not None:
+                        worker.supported_handlers = handlers
+                await db.execute(
+                    delete(ExecutionWorker).where(ExecutionWorker.id == identity.incarnation_id)
+                )
+                await db.commit()
 
 
 async def _register_workflow(
