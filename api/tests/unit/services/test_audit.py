@@ -300,3 +300,23 @@ async def test_strict_audit_does_not_drop_actor_on_integrity_failure(monkeypatch
     with pytest.raises(IntegrityError):
         await emit_audit(_session_mock(), "auth.setup_completed", strict=True)
     assert create.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_best_effort_retry_failure_does_not_propagate(monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+    from src.repositories.audit_logs import AuditLogRepository
+
+    create = AsyncMock(side_effect=[
+        IntegrityError("test insert", {}, RuntimeError("stale actor")),
+        RuntimeError("retry unavailable"),
+    ])
+    monkeypatch.setattr(AuditLogRepository, "create", create)
+    actor_id = uuid4()
+    set_actor(ActorContext(user_id=actor_id, organization_id=None))
+
+    await emit_audit(_session_mock(), "user.create")
+
+    assert create.await_count == 2
+    assert create.await_args_list[0].kwargs["user_id"] == actor_id
+    assert create.await_args_list[1].kwargs["user_id"] is None

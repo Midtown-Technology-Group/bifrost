@@ -23,7 +23,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.repositories.audit_logs import AuditLogRepository
-from src.services.audit_context import ActorContext, current_actor, current_request_scope
+from src.services.audit_context import (
+    ActorContext,
+    current_actor,
+    current_request_scope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -130,10 +134,8 @@ async def emit_audit(
             logger.warning(
                 "Failed to emit audit event %s: %s", action, exc, exc_info=True
             )
-            if strict:
-                raise
     except Exception as exc:
-        # Audit failures must never break the primary operation.
+        # Best-effort callers keep their operation; strict callers roll it back.
         logger.warning(
             "Failed to emit audit event %s: %s",
             action,
