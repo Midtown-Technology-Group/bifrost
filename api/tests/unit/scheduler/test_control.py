@@ -170,6 +170,99 @@ async def test_renewal_that_outlives_the_lease_surrenders_leadership() -> None:
     assert await control._renew_within_lease() is False
 
 
+def _leading_control(lease: FakeLease, stop_after_waits: int, monkeypatch: pytest.MonkeyPatch):
+    """A control plane whose leader services are mocks, a fake wait that stops the
+    loop after ``stop_after_waits`` waits, and a record of surrenders made while
+    still running (the loop's own ``finally`` surrender is excluded)."""
+    control = _control(lease)
+    control._start_leader_services = AsyncMock()  # type: ignore[method-assign]
+    control._stop_leader_services = AsyncMock()  # type: ignore[method-assign]
+    record = SimpleNamespace(waits=[], surrenders_while_running=0)
+    surrender = control._surrender
+
+    async def counted_surrender() -> None:
+        if not control._stop_event.is_set():
+            record.surrenders_while_running += 1
+        await surrender()
+
+    async def wait(stop_event: asyncio.Event, seconds: float) -> None:
+        record.waits.append(seconds)
+        if len(record.waits) >= stop_after_waits:
+            stop_event.set()
+
+    control._surrender = counted_surrender  # type: ignore[method-assign]
+    monkeypatch.setattr(control_module, "wait_or_stop", wait)
+    return control, record
+
+
+@pytest.mark.asyncio
+async def test_raised_renewal_retries_while_the_lease_holds(monkeypatch: pytest.MonkeyPatch) -> None:
+    lease = FakeLease(renew_result=True)
+    attempts = 0
+
+    async def renew() -> bool:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise ConnectionError("database restarted")
+        return True
+
+    lease.renew = renew  # type: ignore[method-assign]
+    control, record = _leading_control(lease, stop_after_waits=3, monkeypatch=monkeypatch)
+
+    await control._leadership_loop()
+
+    assert attempts == 2
+    assert record.surrenders_while_running == 0
+    control._start_leader_services.assert_awaited_once()
+    # renew interval, a retry no longer than the lease left, renew interval
+    assert record.waits == [control._renew_seconds, min(control._retry_seconds, 5.0), control._renew_seconds]
+
+
+@pytest.mark.asyncio
+async def test_raised_renewals_surrender_only_once_the_lease_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    lease = FakeLease()
+    attempts = 0
+
+    async def renew() -> bool:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 3:
+            lease.holds = False  # the local lease ran out while renewals kept failing
+        raise ConnectionError("database restarted")
+
+    lease.renew = renew  # type: ignore[method-assign]
+    # renew interval, two retries, then the post-surrender acquire retry stops the loop
+    control, record = _leading_control(lease, stop_after_waits=4, monkeypatch=monkeypatch)
+
+    await control._leadership_loop()
+
+    assert attempts == 3
+    assert record.surrenders_while_running == 1
+    assert lease.acquire_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_refused_renewal_surrenders_without_retrying(monkeypatch: pytest.MonkeyPatch) -> None:
+    lease = FakeLease(renew_result=False)
+    attempts = 0
+    refuse = lease.renew
+
+    async def renew() -> bool:
+        nonlocal attempts
+        attempts += 1
+        return await refuse()
+
+    lease.renew = renew  # type: ignore[method-assign]
+    control, record = _leading_control(lease, stop_after_waits=2, monkeypatch=monkeypatch)
+
+    await control._leadership_loop()
+
+    assert attempts == 1
+    assert record.surrenders_while_running == 1
+    assert record.waits == [control._renew_seconds, control._retry_seconds]
+
+
 @pytest.mark.asyncio
 async def test_stopping_leader_services_cancels_running_callback() -> None:
     control = _control(FakeLease())
@@ -222,6 +315,29 @@ async def test_callback_does_not_start_without_a_current_lease(
 
     start_run.assert_not_awaited()
     callback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_finished_run_records_only_its_own_next_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    published = AsyncMock()
+    monkeypatch.setattr(control_module, "publish_task_states", published)
+    monkeypatch.setattr(control_module, "start_scheduler_run", AsyncMock())
+    monkeypatch.setattr(control_module, "finish_scheduler_run", AsyncMock())
+    control = _control(FakeLease())
+    await control._start_leader_services()
+    try:
+        assert len(published.await_args.args[0]) == len(SCHEDULED_TASKS)
+        control.lease.is_leader = True  # type: ignore[attr-defined]
+
+        await control._run_scheduled_task("schedule_processor", AsyncMock())
+
+        [(definition, next_run_at)] = published.await_args.args[0]
+        assert definition.task_id == "schedule_processor"
+        assert next_run_at == control._scheduler.get_job("schedule_processor").next_run_time  # type: ignore[union-attr]
+    finally:
+        await control._stop_leader_services()
 
 
 @pytest.mark.asyncio
