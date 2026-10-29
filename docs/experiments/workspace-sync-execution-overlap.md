@@ -51,7 +51,7 @@ This narrowly repairs fresh-worker bootstrap. A worker with an existing stale ch
 
 ## Current-upstream compatibility
 
-After integrating upstream `16d2e45a5d23639353e40e7fa416b43b990f29c8`, exact merge candidate `ee7ee6baf5d1d7e9ec75e7b0b711b3997647519f` passed **156 tests in 58.88 seconds** with the newly rebuilt, unchanged canonical Dockerfile and current pinned dependencies. Image ID: `sha256:4c75360d299cb030728d90f8db0dd3c68a93f7daf6b3742b97764e00160bf8c7`. Docker Ruff also passed. Subsequent changes are documentation and release-disposition metadata only.
+After integrating upstream `16d2e45a5d23639353e40e7fa416b43b990f29c8`, exact merge candidate `ee7ee6baf5d1d7e9ec75e7b0b711b3997647519f` passed **156 tests in 58.88 seconds** with the newly rebuilt, unchanged canonical Dockerfile and current pinned dependencies. Image ID: `sha256:4c75360d299cb030728d90f8db0dd3c68a93f7daf6b3742b97764e00160bf8c7`. Docker Ruff also passed. Runtime source is unchanged after this run. A later test-only review cleanup is validated separately below.
 
 Fetch job `4700fbbc-90ce-45b7-af31-342564d320b5` and Sync job `23a12637-06e5-40c3-a7b9-d85e684c592a` both succeeded on attempt one. All matrix checks above passed again. Fixture commit `4015f78b6491a6a9d847d53a5fc2055f50629693` produced A's `v1/v1/v2` and B's `v2/v2/v2` results. The two additional cases come from current upstream's local Git consumer suite.
 
@@ -66,4 +66,8 @@ Reproduction from the worktree, after building and starting its Docker test stac
   tests/unit/services/test_manifest_jit.py -v -s
 ```
 
-Receipts are local under `/root/.jcode/scratch/migration-20261029/validation/workspace-sync-overlap/repaired/`, including `exact-3f5b08323.log`, `current-upstream.log`, and their JUnit XML files. No staging platform upgrade is part of this proposal.
+The initial published head `fd8614a0a` also passed upstream's full unit job: 10,597 passed, 65 deselected, 2,450 warnings in 364.88 seconds. Lint/type checks, both CodeQL analyses and Product Updates passed. Full E2E shards are reserved for the upstream merge queue, not ordinary PR events.
+
+CodeQL left an inline warning about an implicit lambda return inside `finally`. Test-only follow-up `3b33f092715b6c4898e001b5fdb1ea3ba1b741b7` replaces that polling callback with `functools.partial`, with no exception-handling or product-runtime change. The complete selected suite passed again: **156 tests in 59.13 seconds**, plus Docker Ruff. Fetch `82121271-4fde-4988-bbe9-e600ff1424df` and Sync `cf34826f-fa77-4c40-a748-ba5af8d1ea5d` succeeded on attempt one. Fixture commit `7e65ab65a237c0e705df0baca7c5ef6a1def2665` again returned A=`v1/v1/v2`, B=`v2/v2/v2`. Documentation-only changes follow this exact tested source.
+
+Receipts are local under `/root/.jcode/scratch/migration-20261029/validation/workspace-sync-overlap/repaired/`, including `exact-3f5b08323.log`, `current-upstream.log`, `final-review.log`, their JUnit XML files, and `upstream-unit-job.log`. No staging platform upgrade is part of this proposal.
