@@ -194,7 +194,10 @@ async def test_sync_updates_queued_code_without_replacing_running_imports(
         assert synced.status_code == 202, synced.text
         publication = wait_for_job(e2e_client, headers, synced.json()["job_id"], "workspace.git")
         assert publication["result"]["success"] is True, publication
-        assert publication["result"]["commit_sha"] == deployed_sha, publication
+        # A pull-only Sync legitimately has no pushed commit SHA. Verify the
+        # published workspace bytes, not that optional push receipt.
+        for path in paths:
+            assert await storage.read(path) == (seed / path).read_bytes(), path
         assert _execution(e2e_client, headers, running_id, terminal=False)["status"] == "Running"
         assert _execution(e2e_client, headers, queued_id, terminal=False)["status"] == "Pending"
 
