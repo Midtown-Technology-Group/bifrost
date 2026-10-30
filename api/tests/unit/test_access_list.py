@@ -70,8 +70,6 @@ _GATE_FUNCS = {
 _NOISE_FUNC_NAMES = {
     "create_access_token",
     "create_embed_access_token",
-    "mint_service_token",
-    "mint_engine_token",
     "decode_token",
 }
 
@@ -1235,7 +1233,8 @@ def _extra_entry_roots() -> dict[str, list[object]]:
     roots |= {f"SCHEDULE {func.__qualname__}": [func] for func in _scheduler_job_functions()}
     roots["STARTUP lifespan"] = [lifespan]
     # principal_from_claims builds the runtime principal from a token's
-    # claims; the auth dependency adopts it in token PR1b.
+    # claims, for the auth dependency (through the validator) and for the
+    # middleware's attribution.
     roots["AUTH resolvers"] = [
         *_GATE_FUNCS,
         auth_mod.get_current_user_optional,
@@ -2045,8 +2044,6 @@ _TOKEN_MINTING_SITES: dict[str, str] = {
     "shared.sdk_workflow_execution.insert_scheduled_execution": "cutover",
     "src.core.redis_client.pending_execution_record": "cutover",
     "src.core.security.create_embed_access_token": "route",
-    "src.core.security.mint_engine_token": "cutover",
-    "src.core.security.mint_service_token": "route",
     "src.jobs.consumers.workflow_execution.WorkflowExecutionConsumer.process_message": "cutover",
     "src.routers.auth._generate_login_tokens": "cutover",
     "src.routers.auth.mfa_initial_verify": "cutover",
