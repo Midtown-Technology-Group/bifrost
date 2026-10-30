@@ -241,3 +241,76 @@ required queue reproduction. Logs are retained at
 `/tmp/bifrost-auth-subscription-before-r2.xml`. The refined sequence initializes
 actors in separate existing modules before the role cleanup. Its expected
 11-failure baseline, corrected selection and API quality remain pending.
+
+## Final Causal Proof and Source Merge
+
+The final local sequence used distinct modules to initialize all actor fixtures
+before role cleanup. It reproduces the full-suite credential state, rather than
+letting a late user-creation request refresh the shared admin.
+
+```bash
+./test.sh tests/e2e/api/test_websocket_read_visibility.py::TestAgentRunChannelVisibility::test_owner_can_subscribe_others_denied tests/e2e/api/test_agent_run_visibility.py::test_platform_admin_sees_both_runs tests/e2e/platform/test_solution_storage_full_e2e.py tests/e2e/platform/test_subscriptions.py tests/e2e/platform/test_file_websocket_subscriptions.py -v --durations=0
+./test.sh quality api
+```
+
+Under the shared host flock, the first command against the unchanged 85ae test
+modules produced the 11 original REST `Not authenticated` failures, 4 passes and
+zero errors in 28.89s. With correction 6fc98159a restored, the same 15 cases passed
+in 28.82s. API quality: zero Pyright errors/warnings, Ruff clean. JUnit evidence:
+`/tmp/bifrost-auth-subscription-before.xml` and
+`/tmp/bifrost-auth-subscription-after.xml`; full log:
+`/tmp/bifrost-auth-subscription-repro-r3.log`. The script exited zero, removed its
+owned stack, released the lock and restored a clean worktree. Independent final
+Astra review approved queue readiness with no P1/P2 findings.
+
+PR #1149 then merged as `05d1fbabdb36f6bf6e00fc80c0b991728fdbcbd2` at
+2026-10-30T19:39:47Z. Protected queue [CI run 41115436575](https://github.com/gobifrost/bifrost/actions/runs/41115436575)
+passed all required checks on that exact candidate:
+
+- Backend units: 10,976 passed, 65 intentionally deselected slow tests.
+- Client units: 4,021 passed across 606 files.
+- Backend E2E: 2,404 passed, 40 existing skips; shards 809/0, 799/5 and 796/35
+  passed/skipped. Source-file-size balancing accounts for the changed shard mix.
+- Critical browser smoke: 17 passed, no retries.
+- Lint/types, both candidate image builds and Product Updates: passed.
+
+Both language analyses passed on source 6fc98159a, and all five prior inline
+CodeQL review threads were resolved. Full backend E2E ran in the protected queue;
+it was not repeated locally. Full Playwright was not run locally; the exact
+critical smoke and targeted probes above are the browser evidence. The required
+post-source Product Updates activation is tracked separately below. No release
+publication, production deployment or new performance measurement occurred.
+
+## Verified Product Updates Activation
+
+The canonical collector retained ledger base
+`ade714a08b95c84daa285e859ebece55f45c6754` and froze target
+`05d1fbabdb36f6bf6e00fc80c0b991728fdbcbd2`. It collected 302 commits/PRs,
+preserving all 259 earlier sources and the one reviewed additional-credit record.
+The source PR's author, merge SHA and merge time were verified against GitHub.
+Two interrupted read-only GitHub requests were resumed from successful cached
+reads; the inventory was written only after collection completed.
+
+```bash
+python3 scripts/product_updates.py collect-inventory --base ade714a08b95c84daa285e859ebece55f45c6754 --target 05d1fbabdb36f6bf6e00fc80c0b991728fdbcbd2 --repository gobifrost/bifrost --output product-updates/inventory.json
+python3 scripts/product_updates.py validate --content-dir product-updates --inventory product-updates/inventory.json --dispositions product-updates/dispositions.json --target 05d1fbabdb36f6bf6e00fc80c0b991728fdbcbd2
+python3 /tmp/bifrost-auth-prove-feed.py
+```
+
+The last helper copies the canonical content to a scratch root and calls
+`scripts.prepare_product_updates_image.prepare(scratch_root, content_commit)`;
+it leaves tracked generated files untouched. On clean content commit
+`bc9f323b14cd6fcc147b43cf371a57e68b21e29b`, canonical validation and preparation
+passed under the shared host lock. The resulting bundle at
+`/tmp/bifrost-auth-feed-proof-mltg3mzd/api/product-updates.bundle.json` includes
+notice UUID `68314b62-0ea3-4d44-8779-6241f77275f3`, `action_required: true`,
+`in_app: true`, its approved agent prompt and source PR #1149. Inventory and
+bundle assertions are retained in `/tmp/bifrost-auth-inventory-proof.json` and
+`/tmp/bifrost-auth-feed-proof.json`. The notice checksum is unchanged:
+`d76920de098cdaad77a6831d5865622b4f559b8cb3c9c8a0de47d5ccec9442b3`.
+
+The frozen content also passed manual [Product Updates CI 41118855589](https://github.com/gobifrost/bifrost/actions/runs/41118855589).
+Independent Astra content review found no P1/P2 findings. This content revision
+still uses the protected PR/merge queue; activation is delivered when it lands.
+The source's post-merge CI, CodeQL and Scorecard workflows passed. No full local
+backend or browser suites were repeated for this metadata-only activation.
