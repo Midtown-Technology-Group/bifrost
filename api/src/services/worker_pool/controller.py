@@ -49,11 +49,11 @@ from src.models.orm.services import ServiceDefinition
 from src.models.orm.work_dispatches import WorkDispatch
 from src.models.orm.workflows import Workflow
 from src.services.kubernetes_execution import KubernetesPolicy, load_kubernetes_policy
-from src.services.platform_jobs import WAITING_FOR_MEMORY
 from src.services.memory_requests import LAUNCHABLE_KEY, workflow_request_sql
 from src.services.service_lifecycle import pending_service_statement
 from src.services.work_dispatch import listen_for_pool_wake, wait_for_next_pass
 from src.services.worker_pool.claims import CAPACITY_LOCK, REMOTE_WORKER_HANDLER_NAMES
+from src.services.worker_pool.demand import pending_local_platform_job_ids
 from src.services.worker_pool.manifest import (
     SAFE_TO_EVICT,
     WorkerJobSpec,
@@ -357,8 +357,8 @@ class WorkerPoolController:
     async def launch_for_demand(self, policy: KubernetesPolicy) -> list[UUID]:
         """Reserve incarnations for waiting work, sized by memory, within ceilings.
 
-        Waiting requests (dispatches, pending services, and local platform jobs
-        waiting for executor memory) are placed oldest first into the free budget of
+        Waiting requests (dispatches, pending services, and eligible local
+        platform jobs) are placed oldest first into the free budget of
         executors that can claim (a Job that has not reported its budget
         counts as the one expected). What does not fit goes into new
         standard Jobs, or a Job sized for one request a standard Job cannot
@@ -374,6 +374,7 @@ class WorkerPoolController:
             ).scalar_one()
             if not locked:
                 return []
+            platform_job_ids = await pending_local_platform_job_ids(db, policy, _now())
             waiting = (
                 await db.execute(
                     select(
@@ -398,9 +399,10 @@ class WorkerPoolController:
                             # Any physical worker runs local platform jobs.
                             literal(None),
                         ).where(
+                            PlatformJob.id.in_(platform_job_ids),
                             PlatformJob.status == "queued",
                             PlatformJob.execution_backend == "local",
-                            PlatformJob.phase == WAITING_FOR_MEMORY,
+                            PlatformJob.available_at <= _now(),
                         ),
                         pending_service_statement(_now()).with_only_columns(
                             ServiceDefinition.id,

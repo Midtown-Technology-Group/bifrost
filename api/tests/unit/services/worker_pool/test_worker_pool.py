@@ -1919,7 +1919,7 @@ async def test_a_platform_job_waiting_for_memory_launches_a_worker(db) -> None:
     from src.services.platform_jobs import WAITING_FOR_MEMORY
 
     waiting = PlatformJob(
-        job_type="workspace.reindex", payload={}, requested_by_user_id=str(uuid4()),
+        job_type="workspace.file_index_reconcile", payload={}, requested_by_user_id=str(uuid4()),
         requested_by_email="person@contoso.example", requested_by_name="Contoso User",
         title="Contoso Reindex", memory_required_bytes=512 * MIB, phase=WAITING_FOR_MEMORY,
     )

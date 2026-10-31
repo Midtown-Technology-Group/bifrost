@@ -282,6 +282,15 @@ Service organization changes synchronize the workflow and definition in one
 transaction and require the current attempt to stop first. They preserve
 operator lifecycle policy and do not restart a stopped service.
 
+Due local PlatformJobs contribute capacity demand even when no executor exists
+to mark them as waiting for memory. Planning reads job metadata, not payloads,
+and uses the same per-type concurrency override as claiming. Running and
+cancelling jobs on every backend occupy those limits and resource locks.
+Queued candidates occupy virtual places in claim priority order, so serial or
+resource-constrained backlogs do not create parallel capacity they cannot use.
+This is a read-only capacity prediction; the canonical claimant still acquires
+the transactional locks, lease, and memory reservation before execution.
+
 Every isolated (build-class) job type also persists an explainable
 `memory_required_bytes` from a learned memory profile: Solution deploys keyed
 by a stable fingerprint of their source or prebuilt workload, App deploys and

@@ -85,6 +85,13 @@ class PlatformJobPolicyView(Protocol):
     policy: PlatformJobPolicy
 
 
+def effective_job_max_concurrency(
+    definition: PlatformJobPolicyView, policy: KubernetesPolicy,
+) -> int | None:
+    """Resolve the same product concurrency policy for claims and capacity."""
+    return policy.max_concurrency.get(definition.job_type, definition.policy.max_concurrency)
+
+
 #: The scalar settings an admin edits on the page (and the import fills).
 POLICY_FIELDS = tuple(
     item.name
@@ -415,10 +422,7 @@ class KubernetesExecutionService:
         self, definition: PlatformJobPolicyView
     ) -> int | None:
         """UI override wins when set, otherwise the code policy default."""
-        overrides = (await load_kubernetes_policy(self.session)).max_concurrency
-        if definition.job_type in overrides:
-            return overrides[definition.job_type]
-        return definition.policy.max_concurrency
+        return effective_job_max_concurrency(definition, await load_kubernetes_policy(self.session))
 
     async def describe(self, environ: Mapping[str, str]) -> KubernetesExecutionSettings:
         """Everything Settings -> Kubernetes shows."""
