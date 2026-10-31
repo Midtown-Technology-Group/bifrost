@@ -45,10 +45,13 @@ from src.jobs.platform.kubernetes_client import (
 )
 from src.models.orm.execution_workers import ExecutionWorker
 from src.models.orm.platform_jobs import PlatformJob
+from src.models.orm.services import ServiceDefinition
 from src.models.orm.work_dispatches import WorkDispatch
+from src.models.orm.workflows import Workflow
 from src.services.kubernetes_execution import KubernetesPolicy, load_kubernetes_policy
 from src.services.platform_jobs import WAITING_FOR_MEMORY
-from src.services.memory_requests import LAUNCHABLE_KEY
+from src.services.memory_requests import LAUNCHABLE_KEY, workflow_request_sql
+from src.services.service_lifecycle import pending_service_statement
 from src.services.work_dispatch import listen_for_pool_wake, wait_for_next_pass
 from src.services.worker_pool.claims import CAPACITY_LOCK, REMOTE_WORKER_HANDLER_NAMES
 from src.services.worker_pool.manifest import (
@@ -354,8 +357,8 @@ class WorkerPoolController:
     async def launch_for_demand(self, policy: KubernetesPolicy) -> list[UUID]:
         """Reserve incarnations for waiting work, sized by memory, within ceilings.
 
-        Waiting requests (dispatches, and local platform jobs waiting for
-        executor memory) are placed oldest first into the free budget of
+        Waiting requests (dispatches, pending services, and local platform jobs
+        waiting for executor memory) are placed oldest first into the free budget of
         executors that can claim (a Job that has not reported its budget
         counts as the one expected). What does not fit goes into new
         standard Jobs, or a Job sized for one request a standard Job cannot
@@ -398,7 +401,15 @@ class WorkerPoolController:
                             PlatformJob.status == "queued",
                             PlatformJob.execution_backend == "local",
                             PlatformJob.phase == WAITING_FOR_MEMORY,
-                        )
+                        ),
+                        pending_service_statement(_now()).with_only_columns(
+                            ServiceDefinition.id,
+                            workflow_request_sql(Workflow),
+                            ServiceDefinition.updated_at,
+                            literal(False),
+                            # Every physical executor supervises services.
+                            literal(None),
+                        ),
                     )
                     .order_by(text("created_at"))
                 )

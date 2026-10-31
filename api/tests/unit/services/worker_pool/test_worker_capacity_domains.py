@@ -2,11 +2,17 @@
 
 from unittest.mock import AsyncMock
 from uuid import uuid4
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+import pytest
+import pytest_asyncio
+from sqlalchemy import delete, select
 
 from src.core.cache.redis_client import get_redis
 from src.models.orm.execution_workers import ExecutionWorker
+from src.models.orm.organizations import Organization
+from src.models.orm.services import ServiceAttempt, ServiceDefinition
+from src.models.orm.workflows import Workflow
 from src.services import work_dispatch
 from src.services.memory_requests import LAUNCHABLE_KEY, MIB
 from src.services.worker_pool import claims, controller
@@ -22,6 +28,96 @@ from tests.unit.services.worker_pool.test_worker_pool import (
 )
 
 db = db_fixture
+
+
+@pytest_asyncio.fixture
+async def pending_service(db):
+    org_id, workflow_id, service_id = uuid4(), uuid4(), uuid4()
+    async with db.context() as session:
+        session.add(Organization(id=org_id, name=f"Capacity {org_id}", created_by="test"))
+        await session.flush()
+        session.add(Workflow(
+            id=workflow_id, name=f"capacity_{workflow_id.hex}",
+            path=f"workflows/{workflow_id.hex}.py", function_name="service",
+            type="service", is_active=True, organization_id=org_id,
+            memory_request_mib=256,
+        ))
+        await session.flush()
+        session.add(ServiceDefinition(
+            id=service_id, workflow_id=workflow_id, organization_id=org_id,
+            enabled=True, desired_state="running", created_by="test",
+        ))
+    try:
+        yield service_id, workflow_id
+    finally:
+        async with db.context() as session:
+            await session.execute(delete(ServiceDefinition).where(ServiceDefinition.id == service_id))
+            await session.execute(delete(Workflow).where(Workflow.id == workflow_id))
+            await session.execute(delete(Organization).where(Organization.id == org_id))
+
+
+async def test_pending_service_launches_capacity_without_a_dispatch(db, pending_service) -> None:
+    pool = controller.WorkerPoolController(FakeCluster(), SETTINGS, SPEC)  # type: ignore[arg-type]
+
+    assert len(await pool.launch_for_demand(POLICY)) == 1
+    # The reserved worker covers the demand until it starts; no duplicate launch.
+    assert await pool.launch_for_demand(POLICY) == []
+
+
+async def test_pending_service_uses_existing_physical_memory(db, pending_service) -> None:
+    await _executor(db, "launcher", ["workflow.execute"], GIB)
+    pool = controller.WorkerPoolController(FakeCluster(), SETTINGS, SPEC)  # type: ignore[arg-type]
+
+    assert await pool.launch_for_demand(POLICY) == []
+
+
+async def test_large_pending_service_launches_a_sized_worker(db, pending_service) -> None:
+    _, workflow_id = pending_service
+    async with db.context() as session:
+        workflow = await session.get(Workflow, workflow_id)
+        workflow.memory_request_mib = 4096
+    pool = controller.WorkerPoolController(FakeCluster(), SETTINGS, SPEC)  # type: ignore[arg-type]
+
+    [worker_id] = await pool.launch_for_demand(POLICY)
+    async with db.context() as session:
+        worker = await session.get(ExecutionWorker, worker_id)
+        assert worker.resource_class == "sized"
+        assert worker.reserved_for_dispatch_id is None
+        assert pool._sizing(POLICY, []).budget_bytes(worker.memory_limit_bytes) >= 4096 * MIB
+
+
+@pytest.mark.parametrize("reason", [
+    "disabled", "stopped", "blocked", "backoff", "inactive", "converted", "global", "scope_mismatch", "live",
+])
+async def test_ineligible_service_does_not_launch_capacity(db, pending_service, reason) -> None:
+    service_id, workflow_id = pending_service
+    async with db.context() as session:
+        service = await session.get(ServiceDefinition, service_id)
+        workflow = await session.get(Workflow, workflow_id)
+        if reason == "disabled":
+            service.enabled = False
+        elif reason == "stopped":
+            service.desired_state = "stopped"
+        elif reason == "blocked":
+            service.blocked_reason = "crash_loop"
+        elif reason == "backoff":
+            service.restart_eligible_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        elif reason == "inactive":
+            workflow.is_active = False
+        elif reason == "converted":
+            workflow.type = "workflow"
+        elif reason == "global":
+            service.organization_id = workflow.organization_id = None
+        elif reason == "scope_mismatch":
+            workflow.organization_id = None
+        elif reason == "live":
+            session.add(ServiceAttempt(
+                service_id=service_id, state="running", lease_token="test",
+                lease_expires_at=datetime.now(timezone.utc) + timedelta(minutes=1),
+            ))
+    pool = controller.WorkerPoolController(FakeCluster(), SETTINGS, SPEC)  # type: ignore[arg-type]
+
+    assert await pool.launch_for_demand(POLICY) == []
 
 
 async def _executor(db, name: str, handlers: list[str], budget: int) -> None:

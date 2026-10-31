@@ -272,10 +272,16 @@ and wall-clock duration, include operational margin, and exercise low-memory
 deferral and timeout behavior in tests. These measurements inform policy and
 deployment guidance; they are not per-job CPU or memory reservations.
 
-API agent execution is admitted separately from measured API memory. Do not use
-worker count, warm workers, or isolated-build capacity as agent capacity. Size
-API replicas and their memory limit for the agent work they are configured to
-serve, in addition to HTTP and control-host overhead.
+Agent execution and live/backfill summaries share physical-launcher admission
+with workflow, service, and local PlatformJob work. Worker count adds capacity
+for those handlers; API replicas need memory for HTTP and control-host overhead.
+The capacity controller includes pending supervised services using the same
+eligibility query as fenced service claiming. It excludes disabled, stopped,
+suppressed, backed-off, already-owned, inactive, and incorrectly scoped services;
+their declared or learned workflow memory request determines fit and sizing.
+Service organization changes synchronize the workflow and definition in one
+transaction and require the current attempt to stop first. They preserve
+operator lifecycle policy and do not restart a stopped service.
 
 Every isolated (build-class) job type also persists an explainable
 `memory_required_bytes` from a learned memory profile: Solution deploys keyed
