@@ -146,18 +146,19 @@ async def test_external_admission_binds_only_the_first_process(db, capacity):
     launcher_id = uuid4()
 
     assert await claims.admit_external_worker(
-        worker_id, resource_uid="wrong", launcher_id=launcher_id, version="build",
+        worker_id, resource_uid="wrong", launcher_id=launcher_id, version="build", hostname="unbound",
     ) is None
     assert await claims.admit_external_worker(
-        worker_id, resource_uid=uid, launcher_id=launcher_id, version="build",
+        worker_id, resource_uid=uid, launcher_id=launcher_id, version="build", hostname="physical-worker",
     ) == 0
     assert await claims.admit_external_worker(
-        worker_id, resource_uid=uid, launcher_id=uuid4(), version="build",
+        worker_id, resource_uid=uid, launcher_id=uuid4(), version="build", hostname="replacement",
     ) is None
     async with db.context() as session:
         worker = await session.get(ExecutionWorker, worker_id)
         assert worker.remote_launcher_id == launcher_id
         assert worker.version == "build"
+        assert worker.hostname == "physical-worker"
 
 
 async def test_provider_cannot_replace_an_existing_resource_uid(db, capacity):
@@ -184,7 +185,7 @@ async def test_provider_failure_never_ends_a_fresh_heartbeat_as_silent(db, capac
     [worker_id] = await capacity.pool.launch_for_demand(capacity.policy)
     await capacity.pool.reconcile_worker(worker_id, capacity.policy)
     uid = capacity.provider.resources[str(worker_id)]["resource_uid"]
-    await claims.admit_external_worker(worker_id, resource_uid=uid, launcher_id=uuid4(), version="build")
+    await claims.admit_external_worker(worker_id, resource_uid=uid, launcher_id=uuid4(), version="build", hostname="physical-worker")
     await capacity.pool.reconcile_worker(worker_id, capacity.policy)
     async with db.context() as session:
         assert (await session.get(ExecutionWorker, worker_id)).state == "ready"
@@ -196,7 +197,7 @@ async def test_lost_provider_resource_fences_its_running_work_before_cleanup(db,
     await capacity.pool.reconcile_worker(worker_id, capacity.policy)
     resource = capacity.provider.resources[str(worker_id)]
     await claims.admit_external_worker(
-        worker_id, resource_uid=resource["resource_uid"], launcher_id=uuid4(), version="build",
+        worker_id, resource_uid=resource["resource_uid"], launcher_id=uuid4(), version="build", hostname="physical-worker",
     )
     await claims.heartbeat_worker(
         worker_id, active_runs=0, runs_handled=0, package_generation=0,

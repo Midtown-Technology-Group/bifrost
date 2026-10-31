@@ -971,6 +971,7 @@ class RemoteControlHost:
             admitted = await admit_external_worker(
                 hello.incarnation_id, resource_uid=hello.resource_uid,
                 launcher_id=hello.launcher_id, version=version if isinstance(version, str) else None,
+                hostname=hello.hostname,
             )
             if admitted is None:
                 async with get_liveness_db_context() as db:

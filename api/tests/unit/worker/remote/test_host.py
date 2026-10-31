@@ -325,7 +325,7 @@ async def test_a_worker_is_admitted_with_the_build_its_launcher_runs(reported, f
     if form == "external":
         external.assert_awaited_once_with(
             LEASE.worker_id, resource_uid="capacity-resource",
-            launcher_id=LEASE.launcher_id, version=reported,
+            launcher_id=LEASE.launcher_id, version=reported, hostname="runner-0",
         )
 
 

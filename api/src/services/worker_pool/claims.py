@@ -86,7 +86,7 @@ async def admit_worker(
 
 
 async def admit_external_worker(
-    incarnation_id: UUID, *, resource_uid: str, launcher_id: UUID, version: str | None,
+    incarnation_id: UUID, *, resource_uid: str, launcher_id: UUID, version: str | None, hostname: str,
 ) -> int | None:
     """Bind the first physical process to a prepared external incarnation."""
     async with get_db_context() as db:
@@ -102,7 +102,7 @@ async def admit_external_worker(
                 ExecutionWorker.remote_launcher_id.is_(None),
             )
             .values(
-                state="ready", remote_launcher_id=launcher_id, version=version,
+                state="ready", remote_launcher_id=launcher_id, version=version, hostname=hostname,
                 ready_at=_now(), heartbeat_at=func.now(), last_claim_at=_now(),
             )
             .returning(ExecutionWorker.slots)
