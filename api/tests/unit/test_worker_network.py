@@ -72,13 +72,15 @@ def test_private_resolver_is_inherited_by_python_and_native_subprocesses(tmp_pat
     hosts = tmp_path / "hosts"
     hosts.write_text("127.0.0.1 localhost\n")
     environment = prepare_network_environment(configured_tunnels(configuration()), dict(os.environ), hosts, tmp_path)
-    result = subprocess.run([
-        sys.executable, "-c",
+    script = (
         "import socket,subprocess; "
         "assert socket.getaddrinfo('database.example.test',5432)[0][4][0]=='127.0.0.2'; "
         "assert socket.getaddrinfo('localhost',80); "
-        "assert b'127.0.0.2' in subprocess.check_output(['getent','hosts','database.example.test'])",
-    ], env=environment, capture_output=True, text=True, check=False)
+        "assert b'127.0.0.2' in subprocess.check_output(['getent','hosts','database.example.test'])"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], env=environment, capture_output=True, text=True, check=False,
+    )
     assert result.returncode == 0, result.stderr
 
 
