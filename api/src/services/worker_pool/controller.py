@@ -382,8 +382,8 @@ class WorkerPoolController:
                     )
                     .where(
                         WorkDispatch.assigned_worker_id.is_(None),
-                        # Summaries use the API's memory domain. Launching a
-                        # physical worker cannot add that capacity.
+                        # Every advertised execution handler, including live
+                        # and backfill summaries, gains physical capacity.
                         WorkDispatch.handler.in_(REMOTE_WORKER_HANDLER_NAMES),
                     )
                     .union_all(

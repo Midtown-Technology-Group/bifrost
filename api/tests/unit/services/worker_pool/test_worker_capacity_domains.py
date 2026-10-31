@@ -1,4 +1,4 @@
-"""Physical workers run workflow and agent runs; the API's budget runs summaries."""
+"""Physical worker capacity covers execution and summary dispatches."""
 
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -42,7 +42,7 @@ async def _dispatch(db, handler: str, request: int):
         return row.id
 
 
-async def test_launched_jobs_advertise_workflow_and_agent_runs(db) -> None:
+async def test_launched_jobs_advertise_all_execution_handlers(db) -> None:
     await _accept_pool_run()
     pool = controller.WorkerPoolController(FakeCluster(), SETTINGS, SPEC)  # type: ignore[arg-type]
 
@@ -51,7 +51,9 @@ async def test_launched_jobs_advertise_workflow_and_agent_runs(db) -> None:
     async with db.context() as session:
         worker = await session.get(ExecutionWorker, launched)
         assert worker is not None
-        assert worker.supported_handlers == ["workflow.execute", "agent.run"]
+        assert worker.supported_handlers == [
+            "workflow.execute", "agent.run", "agent.summarize", "agent.summarize_backfill",
+        ]
 
 
 async def test_waiting_agent_work_with_no_free_worker_launches_one(db) -> None:
@@ -69,14 +71,26 @@ async def test_agent_work_fits_a_ready_worker_that_claims_agent_runs(db) -> None
     assert await pool.launch_for_demand(POLICY) == []
 
 
-async def test_api_summary_capacity_never_covers_a_launch_and_summaries_never_launch(db) -> None:
+async def test_legacy_api_summary_capacity_does_not_cover_physical_summary_demand(db) -> None:
     await _executor(db, "api-agent", ["agent.summarize", "agent.summarize_backfill"], GIB)
     await _dispatch(db, "agent.summarize", 16 * MIB)
     pool = controller.WorkerPoolController(FakeCluster(), SETTINGS, SPEC)  # type: ignore[arg-type]
-    assert await pool.launch_for_demand(POLICY) == []
-
-    await _dispatch(db, "agent.run", 32 * MIB)
     assert len(await pool.launch_for_demand(POLICY)) == 1
+
+
+async def test_backfill_summary_without_a_worker_launches_capacity(db) -> None:
+    await _dispatch(db, "agent.summarize_backfill", 16 * MIB)
+    pool = controller.WorkerPoolController(FakeCluster(), SETTINGS, SPEC)  # type: ignore[arg-type]
+
+    assert len(await pool.launch_for_demand(POLICY)) == 1
+
+
+async def test_summary_fits_a_capable_physical_worker(db) -> None:
+    await _executor(db, "launcher", ["workflow.execute", "agent.summarize"], GIB)
+    await _dispatch(db, "agent.summarize", 16 * MIB)
+    pool = controller.WorkerPoolController(FakeCluster(), SETTINGS, SPEC)  # type: ignore[arg-type]
+
+    assert await pool.launch_for_demand(POLICY) == []
 
 
 async def test_largest_budget_counts_launchable_workers_for_agent_runs(db) -> None:
@@ -88,7 +102,7 @@ async def test_largest_budget_counts_launchable_workers_for_agent_runs(db) -> No
     async with db.context() as session:
         assert await work_dispatch.largest_budget(session, "agent.run") == 4 * GIB
         assert await work_dispatch.largest_budget(session, "workflow.execute") == 4 * GIB
-        assert await work_dispatch.largest_budget(session, "agent.summarize") == 512 * MIB
+        assert await work_dispatch.largest_budget(session, "agent.summarize") == 4 * GIB
 
 
 async def test_reconciler_reports_an_agent_run_larger_than_any_worker(db, monkeypatch) -> None:
