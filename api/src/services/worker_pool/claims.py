@@ -316,13 +316,15 @@ async def heartbeat_worker(
     memory_pressured: bool,
     memory_budget_bytes: int | None,
     memory_reserved_bytes: int,
+    active_handler_counts: dict[str, int] | None = None,
 ) -> str | None:
     """Renew liveness; return the state the controller sees (None if gone).
 
     A static executor heartbeats while ``starting`` too: its pool start can
     outlast the window after which a silent executor is lost. On the
     executor's own heartbeat connection, so a heartbeat never waits behind
-    the runs' queries."""
+    the runs' queries. Missing handler occupancy is stored as unknown, never
+    inferred to mean that constrained handler slots are idle."""
     async with get_liveness_db_context() as db:
         if not await fence_remote_owner(db, for_update=True):
             return None
@@ -336,6 +338,7 @@ async def heartbeat_worker(
                 # The database's clock: liveness is judged against it.
                 heartbeat_at=func.now(),
                 active_runs=active_runs,
+                active_handler_counts=active_handler_counts,
                 runs_handled=runs_handled,
                 package_generation=package_generation,
                 memory_pressured=memory_pressured,

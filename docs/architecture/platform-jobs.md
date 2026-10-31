@@ -291,6 +291,14 @@ resource-constrained backlogs do not create parallel capacity they cannot use.
 This is a read-only capacity prediction; the canonical claimant still acquires
 the transactional locks, lease, and memory reservation before execution.
 
+Memory fit does not imply that a limited handler has room. The owner-fenced
+worker heartbeat persists physical per-handler occupancy, including superseded
+tasks still exiting. Planning and claiming share the one-live-summary and
+one-backfill-summary limits. New workers add one slot for each; existing workers
+with unreported occupancy cannot cover summary demand. Live and backfill slots
+remain independent, and active reservations consume their handler slot as well
+as memory. This telemetry adds no job claim or execution authority.
+
 Every isolated (build-class) job type also persists an explainable
 `memory_required_bytes` from a learned memory profile: Solution deploys keyed
 by a stable fingerprint of their source or prebuilt workload, App deploys and

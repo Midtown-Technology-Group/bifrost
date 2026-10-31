@@ -1,7 +1,7 @@
 """Physical worker capacity covers execution and summary dispatches."""
 
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -120,11 +120,70 @@ async def test_ineligible_service_does_not_launch_capacity(db, pending_service, 
     assert await pool.launch_for_demand(POLICY) == []
 
 
-async def _executor(db, name: str, handlers: list[str], budget: int) -> None:
+async def _executor(db, name: str, handlers: list[str], budget: int) -> UUID:
     worker_id = await claims.register_static_worker(
         hostname=name, supported_handlers=handlers,
     )
     assert await claims.mark_static_ready(worker_id, memory_budget_bytes=budget)
+    assert await claims.heartbeat_worker(
+        worker_id, active_runs=0, runs_handled=0, package_generation=0,
+        memory_pressured=False, memory_budget_bytes=budget, memory_reserved_bytes=0,
+        active_handler_counts={},
+    ) == "ready"
+    return worker_id
+
+
+async def test_busy_summary_slot_launches_capacity_despite_free_memory(db) -> None:
+    worker_id = await _executor(db, "launcher", ["workflow.execute", "agent.summarize"], GIB)
+    assert await claims.heartbeat_worker(
+        worker_id, active_runs=1, runs_handled=0, package_generation=0,
+        memory_pressured=False, memory_budget_bytes=GIB, memory_reserved_bytes=16 * MIB,
+        active_handler_counts={"agent.summarize": 1},
+    ) == "ready"
+    await _dispatch(db, "agent.summarize", 16 * MIB)
+    pool = controller.WorkerPoolController(FakeCluster(), SETTINGS, SPEC)  # type: ignore[arg-type]
+
+    assert len(await pool.launch_for_demand(POLICY)) == 1
+    async with db.context() as session:
+        worker = await session.get(ExecutionWorker, worker_id)
+        assert worker.active_handler_counts == {"agent.summarize": 1}
+
+
+async def test_backfill_occupancy_does_not_cover_or_block_live_summary_capacity(db) -> None:
+    worker_id = await _executor(
+        db, "launcher", ["workflow.execute", "agent.summarize", "agent.summarize_backfill"], GIB,
+    )
+    assert await claims.heartbeat_worker(
+        worker_id, active_runs=1, runs_handled=0, package_generation=0,
+        memory_pressured=False, memory_budget_bytes=GIB, memory_reserved_bytes=16 * MIB,
+        active_handler_counts={"agent.summarize_backfill": 1},
+    ) == "ready"
+    await _dispatch(db, "agent.summarize", 16 * MIB)
+    pool = controller.WorkerPoolController(FakeCluster(), SETTINGS, SPEC)  # type: ignore[arg-type]
+    assert await pool.launch_for_demand(POLICY) == []
+
+    await _dispatch(db, "agent.summarize_backfill", 16 * MIB)
+    assert len(await pool.launch_for_demand(POLICY)) == 1
+
+
+async def test_each_new_worker_covers_only_one_live_summary(db) -> None:
+    await _dispatch(db, "agent.summarize", 16 * MIB)
+    await _dispatch(db, "agent.summarize", 16 * MIB)
+    pool = controller.WorkerPoolController(FakeCluster(), SETTINGS, SPEC)  # type: ignore[arg-type]
+
+    assert len(await pool.launch_for_demand(POLICY)) == 2
+    assert await pool.launch_for_demand(POLICY) == []
+
+
+async def test_unreported_summary_occupancy_does_not_cover_demand(db) -> None:
+    worker_id = await claims.register_static_worker(
+        hostname="unreported", supported_handlers=["workflow.execute", "agent.summarize"],
+    )
+    assert await claims.mark_static_ready(worker_id, memory_budget_bytes=GIB)
+    await _dispatch(db, "agent.summarize", 16 * MIB)
+    pool = controller.WorkerPoolController(FakeCluster(), SETTINGS, SPEC)  # type: ignore[arg-type]
+
+    assert len(await pool.launch_for_demand(POLICY)) == 1
 
 
 async def _dispatch(db, handler: str, request: int):

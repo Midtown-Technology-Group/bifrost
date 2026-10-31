@@ -5,7 +5,7 @@ controller as one Kubernetes Job lifetime (it carries an incarnation). A
 *static* worker is a long-running container (the ``scheduler`` and ``worker``
 services, through their entry points) that registers itself and never idles
 out. A remote executor runs workflows, agent runs, services and local platform
-jobs in its launcher's children; the API-resident executor runs summaries.
+jobs and summaries in its launcher's children.
 
 A job worker admits itself
 to its incarnation (Job UID bound before start, pod UID bound once), then
@@ -74,6 +74,7 @@ from src.services.worker_pool.claims import (
     retire_worker,
 )
 from src.services.worker_pool.recovery import UNSTARTED_CLAIM_WINDOW, release_unstarted_claims
+from src.worker.remote.protocol import HANDLER_CONCURRENCY_LIMITS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -255,10 +256,14 @@ class PoolWorker:
         one backfill summary at a time is policy, so a large backfill never
         delays live summaries."""
         handlers = [pair for pair in self._handlers if pair[0] in {"workflow.execute", "agent.run"}]
-        for summary_handler in ("agent.summarize", "agent.summarize_backfill"):
-            if (summary_handler, 1) in self._handlers and not self._tasks[summary_handler]:
+        for summary_handler, limit in HANDLER_CONCURRENCY_LIMITS:
+            if (summary_handler, 1) in self._handlers and len(self._tasks[summary_handler]) < limit:
                 handlers.append((summary_handler, 1))
         return tuple(handlers)
+
+    def active_handler_counts(self) -> dict[str, int]:
+        """Physical task occupancy, including superseded tasks still exiting."""
+        return {handler: len(tasks) for handler, tasks in self._tasks.items()}
 
     async def _initialize_runtime(self) -> bool:
         """Initialize this process's database runtime and join the worker pool."""
@@ -754,6 +759,7 @@ class PoolWorker:
                 state = await asyncio.wait_for(heartbeat_worker(
                     self.incarnation_id,
                     active_runs=self.active_runs(),
+                    active_handler_counts=self.active_handler_counts(),
                     runs_handled=self.runs_handled,
                     package_generation=self.package_generation,
                     memory_pressured=(

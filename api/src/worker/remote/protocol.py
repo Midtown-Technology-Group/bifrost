@@ -47,6 +47,9 @@ EXECUTION_HANDLERS = (
     ("agent.summarize_backfill", 1),
 )
 SUMMARY_CLAIM_PROTOCOL = 1
+# Shared execution and capacity policy: live summaries never wait behind a
+# backfill, and adding physical workers adds one slot for each handler.
+HANDLER_CONCURRENCY_LIMITS = (("agent.summarize", 1), ("agent.summarize_backfill", 1))
 
 
 def hello_execution_handlers(frame: Mapping[str, Any]) -> tuple[tuple[str, int], ...]:

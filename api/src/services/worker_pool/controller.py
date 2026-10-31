@@ -28,7 +28,7 @@ import asyncio
 import json
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -72,6 +72,7 @@ from src.services.worker_pool.recovery import (
     end_runs_of_lost_worker,
 )
 from src.services.worker_pool.sizing import LIVE_STATES, JobSizing, job_baseline, launch_limit
+from src.worker.remote.protocol import HANDLER_CONCURRENCY_LIMITS
 
 logger = logging.getLogger(__name__)
 
@@ -425,6 +426,7 @@ class WorkerPoolController:
             sizing = self._sizing(policy, workers)
 
             requests = {row.id: row.memory_request_bytes for row in waiting}
+            request_handlers = {row.id: row.handler for row in waiting}
             free: list[FreeBudget] = []
             covered: set[UUID] = set()
             for worker in workers:
@@ -436,9 +438,21 @@ class WorkerPoolController:
                     continue
                 # A worker launched for one dispatch holds it until it claims it.
                 held = 0
+                handler_slots = dict(HANDLER_CONCURRENCY_LIMITS)
+                if worker.state not in ("reserved", "starting"):
+                    if worker.active_handler_counts is None:
+                        handler_slots = {handler: 0 for handler in handler_slots}
+                    else:
+                        handler_slots = {
+                            handler: max(0, limit - worker.active_handler_counts.get(handler, 0))
+                            for handler, limit in HANDLER_CONCURRENCY_LIMITS
+                        }
                 if worker.reserved_for_dispatch_id in requests:
                     covered.add(worker.reserved_for_dispatch_id)
                     held = requests[worker.reserved_for_dispatch_id]
+                    held_handler = request_handlers[worker.reserved_for_dispatch_id]
+                    if held_handler in handler_slots:
+                        handler_slots[held_handler] = max(0, handler_slots[held_handler] - 1)
                 # A Job admitted but still starting its pool has not measured
                 # its budget yet; until it reports, count the one expected.
                 # A static executor counts only once ready and measured.
@@ -446,11 +460,11 @@ class WorkerPoolController:
                     worker.state in ("reserved", "starting") or worker.memory_budget_bytes is None
                 ):
                     budget = sizing.budget_bytes(launch_limit(worker, sizing.standard_limit_bytes))
-                    free.append(FreeBudget(max(0, budget - held), handlers))
+                    free.append(FreeBudget(max(0, budget - held), handlers, handler_slots))
                 elif worker.state == "ready" and worker.memory_budget_bytes is not None:
                     free.append(FreeBudget(
                         max(0, worker.memory_budget_bytes - worker.memory_reserved_bytes - held),
-                        handlers,
+                        handlers, handler_slots,
                     ))
             plan = _plan_launches(
                 [
@@ -650,10 +664,11 @@ class Request:
 
 @dataclass(frozen=True)
 class FreeBudget:
-    """An executor's free memory and the handlers it can claim."""
+    """An executor's free memory, capabilities, and limited handler slots."""
 
     bytes: int
     handlers: frozenset[str]
+    handler_slots: dict[str, int] = field(default_factory=lambda: dict(HANDLER_CONCURRENCY_LIMITS))
 
     def takes(self, request: Request) -> bool:
         return request.handler is None or request.handler in self.handlers
@@ -673,15 +688,22 @@ def _plan_launches(
     gets its own sized Job; one larger than the largest launchable budget is
     left for the reconciler to fail. New Jobs claim every handler.
     """
-    rooms = [budget.bytes for budget in free]
-    new_bins: list[int] = []
+    bins = list(free)
+    rooms = [budget.bytes for budget in bins]
+    slots = [dict(budget.handler_slots) for budget in bins]
+    limited = dict(HANDLER_CONCURRENCY_LIMITS)
     sized: list[tuple[UUID, int]] = []
     for item in waiting:
         dispatch_id, request = item.id, item.bytes
         placed = False
-        for index, budget in enumerate(free):
-            if rooms[index] >= request and budget.takes(item):
+        for index, budget in enumerate(bins):
+            if (
+                rooms[index] >= request and budget.takes(item)
+                and (item.handler not in limited or slots[index].get(item.handler, 0) > 0)
+            ):
                 rooms[index] -= request
+                if item.handler in limited:
+                    slots[index][item.handler] -= 1
                 placed = True
                 break
         if placed:
@@ -690,14 +712,13 @@ def _plan_launches(
             if request <= largest_budget:
                 sized.append((dispatch_id, request))
             continue
-        for index, room in enumerate(new_bins):
-            if room >= request:
-                new_bins[index] -= request
-                placed = True
-                break
-        if not placed:
-            new_bins.append(standard_budget - request)
-    return LaunchPlan(standard=len(new_bins), sized=sized)
+        bins.append(FreeBudget(standard_budget, frozenset(REMOTE_WORKER_HANDLER_NAMES)))
+        rooms.append(standard_budget - request)
+        new_slots = dict(limited)
+        if item.handler in limited:
+            new_slots[item.handler] -= 1
+        slots.append(new_slots)
+    return LaunchPlan(standard=len(bins) - len(free), sized=sized)
 
 
 async def _publish_launchable(largest_budget: int) -> None:

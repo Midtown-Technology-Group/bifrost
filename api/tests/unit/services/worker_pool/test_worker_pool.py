@@ -1239,6 +1239,7 @@ async def test_stale_remote_owner_cannot_control_its_replaced_worker(db) -> None
                 memory_pressured=False,
                 memory_budget_bytes=GIB,
                 memory_reserved_bytes=64 * MIB,
+                active_handler_counts={"agent.summarize": 1},
             )
             is None
         )
@@ -1257,6 +1258,7 @@ async def test_stale_remote_owner_cannot_control_its_replaced_worker(db) -> None
     assert worker.state == "ready"
     assert worker.active_runs == 0
     assert worker.runs_handled == 0
+    assert worker.active_handler_counts is None
     assert dispatch is None
 
 

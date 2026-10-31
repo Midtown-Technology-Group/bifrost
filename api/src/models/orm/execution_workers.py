@@ -74,6 +74,9 @@ class ExecutionWorker(Base):
         ),
     )
     active_runs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Owner-fenced occupancy for handlers with per-worker concurrency limits.
+    # NULL means unreported; capacity planning cannot assume those slots free.
+    active_handler_counts: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
     # Over its memory threshold: claims nothing, so its free slots are not
     # capacity the controller can count on.
     memory_pressured: Mapped[bool] = mapped_column(
