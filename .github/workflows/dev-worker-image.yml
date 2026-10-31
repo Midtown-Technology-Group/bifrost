@@ -35,8 +35,18 @@ jobs:
         run: |
           set -euo pipefail
           image="ghcr.io/${REPOSITORY_OWNER,,}/bifrost-worker-dev"
+          # Fork release tags need not be ancestors of upstream-based branches.
+          # Keep canonical upstream tags separate from the fork's own tags.
+          git fetch --no-tags https://github.com/gobifrost/bifrost.git \
+            'refs/tags/v*:refs/tags/bifrost-upstream/v*'
+          release="$(git describe --tags --abbrev=0 --match 'bifrost-upstream/v[0-9]*')"
+          if ! [[ "$release" =~ ^bifrost-upstream/v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "No canonical semantic release tag found for this development source" >&2
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))-dev.$(git show -s --format=%ct HEAD)"
           echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "version=$(./scripts/compute-dev-version.sh)" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Prepare approved in-app updates
         uses: ./.github/actions/prepare-product-updates
@@ -57,7 +67,6 @@ jobs:
         with:
           context: .
           file: ./api/Dockerfile
-          target: runtime
           platforms: linux/amd64
           push: true
           tags: ${{ steps.identity.outputs.image }}:sha-${{ github.sha }}
