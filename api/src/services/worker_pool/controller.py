@@ -346,7 +346,7 @@ class WorkerCapacityController(ABC):
             free: list[FreeBudget] = []
             covered: set[UUID] = set()
             for worker in workers:
-                # Physical workers only; an API's summary executor never is.
+                # Only physical workers contribute launcher capacity.
                 if "workflow.execute" not in worker.supported_handlers:
                     continue
                 handlers = frozenset(worker.supported_handlers)
