@@ -75,7 +75,8 @@ async def handle_summarize_message(
 
     factory = session_factory or get_session_factory()
     run_id = UUID(message["run_id"])
-    fenced_factory = partial(summary_owner_session, factory, run_id, worker_id)
+    claim_id = UUID(message["claim_id"])
+    fenced_factory = partial(summary_owner_session, factory, run_id, worker_id, claim_id)
     job_id: UUID | None = None
     async with fenced_factory() as db:
         claimed = await claim_summary(db, run_id, UUID(message["dispatch_id"]))

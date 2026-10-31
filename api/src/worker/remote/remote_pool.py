@@ -133,7 +133,7 @@ class ThinRemoteProcessPool(ProcessPoolManager):
         services: list[OwnedAttempt] = []
         jobs: list[tuple[str, ClaimedPlatformJob]] = []
         agent_runs: dict[str, tuple[UUID, int]] = {}
-        summaries: dict[str, tuple[UUID, int, str]] = {}
+        summaries: dict[str, tuple[UUID, int, str, UUID]] = {}
         observed: set[str] = set()
         rejected: list[tuple[str, str]] = []
         async with get_db_context() as db:
@@ -232,6 +232,7 @@ class ThinRemoteProcessPool(ProcessPoolManager):
                     handler = entry.get("handler") if summary else "agent.run"
                     if summary and handler not in ("agent.summarize", "agent.summarize_backfill"):
                         raise ValueError("Unknown summary handler")
+                    claim_id = UUID(str(entry["claim_id"])) if summary else None
                     # A cancelling run's child is still winding down; adopt
                     # it so its exit settles the run.
                     valid = await db.scalar(select(AgentRun.id).join(
@@ -242,12 +243,14 @@ class ThinRemoteProcessPool(ProcessPoolManager):
                         AgentRun.status.in_(("completed",) if summary else ("queued", "running", "cancelling")),
                         ExecutionWorkerClaim.worker_id == UUID(self.worker_id),
                         ExecutionWorkerClaim.family == ("agent_summary" if summary else "agent_run"),
+                        *([ExecutionWorkerClaim.id == claim_id] if summary else []),
                     ))
                     if valid is None:
                         rejected.append((route_id, kind))
                         continue
                     if summary:
-                        summaries[route_id] = (subject, request_bytes, str(handler))
+                        assert claim_id is not None
+                        summaries[route_id] = (subject, request_bytes, str(handler), claim_id)
                     else:
                         agent_runs[route_id] = (subject, request_bytes)
                 else:

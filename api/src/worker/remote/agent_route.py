@@ -75,6 +75,7 @@ class AgentRoute:
     route_id: str
     run_id: UUID
     handler: str = "agent.run"
+    claim_id: UUID | None = None
     exited: asyncio.Future[None] = field(
         default_factory=lambda: asyncio.get_running_loop().create_future()
     )
@@ -100,7 +101,8 @@ class RemoteAgentConsumer:
             raise RuntimeError(f"Agent run {run_id} holds no memory reservation")
         if handler not in ("agent.run", "agent.summarize", "agent.summarize_backfill"):
             raise ValueError(f"Unknown agent handler: {handler}")
-        route = AgentRoute(route_id=f"agent:{run_id}:{uuid4()}", run_id=run_id, handler=handler)
+        claim_id = UUID(body["claim_id"]) if handler != "agent.run" else None
+        route = AgentRoute(route_id=f"agent:{run_id}:{uuid4()}", run_id=run_id, handler=handler, claim_id=claim_id)
         self.routes[route.route_id] = route
         try:
             await self.transport.request("agent_run" if handler == "agent.run" else "agent_summary", {
@@ -118,10 +120,11 @@ class RemoteAgentConsumer:
         except MemoryError:
             # Refused before forking: the run waits for a worker with room.
             self.routes.pop(route.route_id, None)
-            release = release_agent_run if handler == "agent.run" else release_summary
-            await release(
-                worker_id=self.worker_id, run_id=run_id, dispatch_id=UUID(dispatch_id)
-            )
+            if handler == "agent.run":
+                await release_agent_run(worker_id=self.worker_id, run_id=run_id, dispatch_id=UUID(dispatch_id))
+            else:
+                assert claim_id is not None
+                await release_summary(worker_id=self.worker_id, run_id=run_id, dispatch_id=UUID(dispatch_id), claim_id=claim_id)
             return
         except Exception as exc:
             self.routes.pop(route.route_id, None)
@@ -130,11 +133,13 @@ class RemoteAgentConsumer:
             return
         await self.supervise(route)
 
-    def adopt(self, route_id: str, run_id: UUID, *, handler: str = "agent.run") -> AgentRoute:
+    def adopt(self, route_id: str, run_id: UUID, *, handler: str = "agent.run", claim_id: UUID | None = None) -> AgentRoute:
         """Attach to a child an earlier owner launched."""
         route = self.routes.get(route_id)
         if route is None:
-            route = AgentRoute(route_id=route_id, run_id=run_id, handler=handler)
+            if handler != "agent.run" and claim_id is None:
+                raise ValueError("A summary route requires its canonical claim identity")
+            route = AgentRoute(route_id=route_id, run_id=run_id, handler=handler, claim_id=claim_id)
             self.routes[route_id] = route
         return route
 
@@ -252,7 +257,8 @@ class RemoteAgentConsumer:
         if route.handler == "agent.run":
             await announce_ended_agent_run(route.run_id, error)
         else:
-            await fail_remote_summary(worker_id=self.worker_id, run_id=route.run_id, reason=error)
+            assert route.claim_id is not None
+            await fail_remote_summary(worker_id=self.worker_id, run_id=route.run_id, claim_id=route.claim_id, reason=error)
 
     def _resolve(self, route: AgentRoute) -> None:
         self.routes.pop(route.route_id, None)

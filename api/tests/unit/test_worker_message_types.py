@@ -63,9 +63,10 @@ async def test_summarize_failure_marks_run_failed(
     )
     db_session.add(run)
     worker_id = uuid4()
+    claim_id = uuid4()
     db_session.add(ExecutionWorker(id=worker_id, form="static", state="ready", slots=1))
     await db_session.flush()
-    db_session.add(ExecutionWorkerClaim(worker_id=worker_id, family="agent_summary", subject_id=run.id))
+    db_session.add(ExecutionWorkerClaim(id=claim_id, worker_id=worker_id, family="agent_summary", subject_id=run.id))
     # Use commit so the handler's separate session sees the row.
     # Cleanup happens at the end of the test below.
     await db_session.commit()
@@ -83,7 +84,7 @@ async def test_summarize_failure_marks_run_failed(
         ):
             # Should not raise — errors are swallowed to prevent retry loops.
             await handle_summarize_message(
-                {"run_id": str(run.id), "dispatch_id": str(uuid4())},
+                {"run_id": str(run.id), "dispatch_id": str(uuid4()), "claim_id": str(claim_id)},
                 session_factory=async_session_factory,
                 worker_id=worker_id,
             )

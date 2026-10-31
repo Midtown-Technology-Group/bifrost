@@ -28,6 +28,7 @@ from src.core.log_safety import log_safe
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.execution_workers import ExecutionWorker, ExecutionWorkerClaim
 from src.models.orm.work_dispatches import WorkDispatch
+from src.models.orm.summary_backfill_job import SummaryBackfillJob
 from src.services.memory_requests import SUMMARY_REQUEST_BYTES
 from src.services.work_dispatch import hand_off, stage_dispatch, take_dispatch_payload
 from src.core.database import get_db_context
@@ -46,7 +47,7 @@ class SummaryOwnershipLost(RuntimeError):
 
 
 @asynccontextmanager
-async def summary_owner_session(factory: Any, run_id: UUID, worker_id: UUID) -> AsyncIterator[AsyncSession]:
+async def summary_owner_session(factory: Any, run_id: UUID, worker_id: UUID, claim_id: UUID) -> AsyncIterator[AsyncSession]:
     """Fence each short summary transaction against physical worker loss.
 
     Lock the worker before the run, matching lost-worker recovery. No database
@@ -57,14 +58,15 @@ async def summary_owner_session(factory: Any, run_id: UUID, worker_id: UUID) -> 
             ExecutionWorker.id == worker_id,
             ExecutionWorker.state.in_(("ready", "draining")),
         ).with_for_update(read=True))
-        owned = await db.scalar(select(AgentRun.id).where(
-            AgentRun.id == run_id,
-            exists().where(
+        run = await db.scalar(select(AgentRun.id).where(AgentRun.id == run_id).with_for_update()) if worker is not None else None
+        # Check after acquiring the run lock, in a fresh statement snapshot:
+        # regeneration may have invalidated this claim while we waited.
+        owned = await db.scalar(select(ExecutionWorkerClaim.id).where(
+                ExecutionWorkerClaim.id == claim_id,
                 ExecutionWorkerClaim.worker_id == worker_id,
                 ExecutionWorkerClaim.family == FAMILY,
                 ExecutionWorkerClaim.subject_id == run_id,
-            ),
-        ).with_for_update()) if worker is not None else None
+        )) if run is not None else None
         if owned is None:
             raise SummaryOwnershipLost("Summary worker ownership was lost")
         yield db
@@ -103,6 +105,13 @@ async def stage_summary(
         .on_conflict_do_nothing(index_elements=["family", "subject_id"])
         .returning(WorkDispatch.id)
     )
+    if inserted is not None:
+        # A new dispatch supersedes every earlier attempt, even on the same
+        # still-live physical worker. The next pool claim gets its own UUID.
+        await db.execute(delete(ExecutionWorkerClaim).where(
+            ExecutionWorkerClaim.family == FAMILY,
+            ExecutionWorkerClaim.subject_id == run_id,
+        ))
     return dispatch if inserted is not None else None
 
 
@@ -110,7 +119,16 @@ async def request_summary(db: AsyncSession, run: AgentRun) -> WorkDispatch | Non
     """Ask for a fresh summary of ``run`` (regenerate), in the caller's transaction."""
     run.summary_status = "pending"
     run.summary_error = None
-    run.summary_backfill_job_id = None
+    if run.summary_backfill_job_id is not None:
+        active_backfill = await db.scalar(select(SummaryBackfillJob.id).where(
+            SummaryBackfillJob.id == run.summary_backfill_job_id,
+            SummaryBackfillJob.status == "running",
+        ))
+        if active_backfill is None:
+            run.summary_backfill_job_id = None
+    await db.execute(delete(WorkDispatch).where(
+        WorkDispatch.family == FAMILY, WorkDispatch.subject_id == run.id,
+    ))
     return await stage_summary(db, run.id)
 
 
@@ -178,7 +196,7 @@ async def fail_unclaimed_summary(db: AsyncSession, run_id: UUID, reason: str) ->
     )
 
 
-async def release_summary(*, worker_id: UUID, run_id: UUID, dispatch_id: UUID) -> None:
+async def release_summary(*, worker_id: UUID, run_id: UUID, dispatch_id: UUID, claim_id: UUID) -> None:
     """Return a summary refused before forking, preserving its queue position."""
     async with get_db_context() as db:
         if not await fence_remote_owner(db, for_update=True):
@@ -189,12 +207,19 @@ async def release_summary(*, worker_id: UUID, run_id: UUID, dispatch_id: UUID) -
                 WorkDispatch.id == dispatch_id, WorkDispatch.family == FAMILY,
                 WorkDispatch.subject_id == run_id,
                 WorkDispatch.assigned_worker_id == worker_id,
+                exists().where(
+                    ExecutionWorkerClaim.id == claim_id,
+                    ExecutionWorkerClaim.worker_id == worker_id,
+                    ExecutionWorkerClaim.family == FAMILY,
+                    ExecutionWorkerClaim.subject_id == run_id,
+                ),
             )
             .values(assigned_worker_id=None)
             .returning(WorkDispatch.id)
         )
         if released is not None:
             await db.execute(delete(ExecutionWorkerClaim).where(
+                ExecutionWorkerClaim.id == claim_id,
                 ExecutionWorkerClaim.worker_id == worker_id,
                 ExecutionWorkerClaim.family == FAMILY,
                 ExecutionWorkerClaim.subject_id == run_id,
@@ -204,12 +229,14 @@ async def release_summary(*, worker_id: UUID, run_id: UUID, dispatch_id: UUID) -
         await hand_off()
 
 
-async def fail_remote_summary(*, worker_id: UUID, run_id: UUID, reason: str) -> None:
+async def fail_remote_summary(*, worker_id: UUID, run_id: UUID, claim_id: UUID, reason: str) -> None:
     """Settle an interrupted summary without changing the original agent run."""
     async with get_db_context() as db:
         if not await fence_remote_owner(db, for_update=True):
             return
+        await db.scalar(select(AgentRun.id).where(AgentRun.id == run_id).with_for_update())
         owned = exists().where(
+            ExecutionWorkerClaim.id == claim_id,
             ExecutionWorkerClaim.worker_id == worker_id,
             ExecutionWorkerClaim.family == FAMILY,
             ExecutionWorkerClaim.subject_id == run_id,

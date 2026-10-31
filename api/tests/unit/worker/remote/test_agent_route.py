@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.execution_workers import ExecutionWorker, ExecutionWorkerClaim
@@ -139,7 +139,7 @@ async def test_summary_routes_use_the_physical_worker_and_preserve_the_original_
     monkeypatch.setattr(agent_route, "fail_remote_summary", failure)
     launcher = Launcher()
     consumer = RemoteAgentConsumer(launcher, worker_id=LEASE.worker_id)
-    body = _body()
+    body = {**_body(), "claim_id": str(uuid4())}
     waiting = asyncio.create_task(consumer.process_message(body, handler=handler))
     await asyncio.wait_for(launcher.launched.wait(), 1)
     [route_id] = consumer.routes
@@ -160,10 +160,11 @@ async def test_summary_memory_refusal_returns_its_dispatch_without_failing_the_a
     release = AsyncMock()
     monkeypatch.setattr(agent_route, "release_summary", release)
     consumer = RemoteAgentConsumer(Launcher(refuse=MemoryError("pressure")), worker_id=LEASE.worker_id)
-    body = _body()
+    body = {**_body(), "claim_id": str(uuid4())}
     await consumer.process_message(body, handler="agent.summarize")
     release.assert_awaited_once_with(
         worker_id=LEASE.worker_id, run_id=UUID(body["run_id"]), dispatch_id=UUID(body["dispatch_id"]),
+        claim_id=UUID(body["claim_id"]),
     )
     announce.assert_not_awaited()
     assert consumer.routes == {}
@@ -401,8 +402,9 @@ async def test_inventory_adopts_a_live_child_of_its_claimed_run(
 
 
 @pytest.mark.parametrize("terminal", [False, True])
-async def test_inventory_adopts_summary_children_only_under_their_summary_claim(
-    async_session_factory, monkeypatch, terminal,
+@pytest.mark.parametrize("current", [False, True])
+async def test_inventory_accepts_only_the_current_summary_claim(
+    async_session_factory, monkeypatch, terminal, current,
 ) -> None:
     @asynccontextmanager
     async def context():
@@ -413,13 +415,22 @@ async def test_inventory_adopts_summary_children_only_under_their_summary_claim(
     async with _seeded_run(async_session_factory, status="completed", family="agent_summary") as (worker_id, run_id):
         transport = AsyncMock()
         pool = ThinRemoteProcessPool(transport, worker_id=str(worker_id))
-        route = {**_agent_route(run_id), "kind": "agent_summary", "handler": "agent.summarize_backfill"}
+        async with async_session_factory() as db:
+            claim_id = await db.scalar(select(ExecutionWorkerClaim.id).where(
+                ExecutionWorkerClaim.worker_id == worker_id, ExecutionWorkerClaim.subject_id == run_id,
+            ))
+        route = {**_agent_route(run_id), "kind": "agent_summary", "handler": "agent.summarize_backfill", "claim_id": str(claim_id if current else uuid4())}
         snapshot = await pool.reconcile_inventory({
             "version": 1, "routes": [] if terminal else [route],
             "terminal_routes": [route] if terminal else [],
         })
-    assert snapshot["summaries"] == {route["route_id"]: (run_id, 48 * MIB, "agent.summarize_backfill")}
-    transport.request.assert_not_awaited()
+    if current:
+        assert snapshot["summaries"] == {route["route_id"]: (run_id, 48 * MIB, "agent.summarize_backfill", claim_id)}
+        transport.request.assert_not_awaited()
+    else:
+        assert snapshot["summaries"] == {}
+        transport.request.assert_awaited_once()
+        assert transport.request.await_args.args[0] == "terminate"
 
 
 @pytest.mark.parametrize("finished", ["completed", "unclaimed"])

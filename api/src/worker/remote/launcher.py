@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, NamedTuple
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from shared.version import get_version
 from src.services.execution.cpu_sampler import CPUSampler, get_clock_ticks
@@ -26,6 +26,7 @@ from src.worker.remote.identity import LauncherIdentity, load_launcher_identity
 from src.worker.remote.protocol import (
     CREDENTIAL_PROTOCOL,
     EXECUTION_HANDLERS,
+    SUMMARY_CLAIM_PROTOCOL,
     ControlEnvelope,
     FragmentAssembler,
     Hello,
@@ -153,6 +154,7 @@ class Child:
     memory_request_bytes: int | None = None
     agent_run: bool = False
     agent_handler: str = "agent.run"
+    summary_claim_id: str | None = None
     # Start time of the forked process, so a reused PID is never mistaken
     # for it when the launcher reaps an orphaned agent child.
     start_ticks: int | None = None
@@ -302,6 +304,7 @@ class Launcher:
             "version": get_version(),
             "credential_protocol": CREDENTIAL_PROTOCOL,
             "handlers": EXECUTION_HANDLERS,
+            "summary_claim_protocol": SUMMARY_CLAIM_PROTOCOL,
         }, separators=(",", ":")))
         welcome = json.loads(await self.socket.recv())
         if welcome.get("event") != "welcome" or not isinstance(welcome.get("session_generation"), int):
@@ -404,6 +407,7 @@ class Launcher:
                     raise ValueError("Summary command requires a summary handler")
                 if action == "agent_summary" and payload.get("worker_id") != str(self.identity.incarnation_id):
                     raise ValueError("Summary worker identity does not match this launcher")
+                claim_id = str(UUID(payload["message"]["claim_id"])) if action == "agent_summary" else None
                 self.check_fork_pressure()
                 route_id = payload["route_id"]
                 if route_id in self.children or route_id in self.jobs:
@@ -419,7 +423,7 @@ class Launcher:
                 child = Child(route_id, str(payload["run_id"]), pid, work, result,
                               time.monotonic(), 0,
                               memory_request_bytes=int(payload["memory_request_bytes"]),
-                              agent_run=True, agent_handler=handler)
+                              agent_run=True, agent_handler=handler, summary_claim_id=claim_id)
                 self.track_child(child)
                 work.put_nowait({
                     "message": payload["message"],
@@ -535,7 +539,7 @@ class Launcher:
         return {
             "route_id": child.route_id,
             "kind": child.kind,
-            **({"handler": child.agent_handler} if child.kind == "agent_summary" else {}),
+            **({"handler": child.agent_handler, "claim_id": child.summary_claim_id} if child.kind == "agent_summary" else {}),
             "subject_id": child.execution_id,
             **extra,
             "memory_request_bytes": child.memory_request_bytes,

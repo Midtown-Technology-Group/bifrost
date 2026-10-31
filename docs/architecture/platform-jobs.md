@@ -63,20 +63,39 @@ required.
 The API owns canonical execution control. During its lifespan, each API replica
 starts the remote-control host. When an authenticated physical launcher
 connects, that host constructs one canonical `PoolWorker` control instance for
-that launcher. It claims and reconciles workflows, supervised services, and
-local PlatformJobs, retaining the existing PostgreSQL fencing, result,
+that launcher. It claims and reconciles workflows, agent runs, summaries,
+supervised services, and local PlatformJobs, retaining the PostgreSQL fencing, result,
 cancellation, timeout, and memory-admission paths. The physical launcher is a
 small standard-library supervisor: it owns its process templates and child
 processes, reports their inventory and cgroup telemetry, and carries out
-commands from the API. It does not own ORM state or durable claim loops.
+commands from the API. The supervisor does not own durable claim loops. Its
+handler children retain their required database, Redis, and repository access.
 
-`ApiAgentExecutor` is separate. Each API process has one instance, admitted
-from that API process's measured memory, and it claims only `agent.run`,
-`agent.summarize`, and `agent.summarize_backfill`. It never starts a workflow,
-service, PlatformJob, Kubernetes-control, or package loop. Agent capacity is
-therefore an API capacity domain; workflow, service, and PlatformJob capacity
-belongs to the connected physical launcher that will execute them. Adding or
-warming physical workers does not add agent capacity.
+Agent runs, `agent.summarize`, and `agent.summarize_backfill` execute in separate
+children of the physical launcher's agent template. No summary executor runs in
+the API. Their memory reservations share that launcher's measured budget with
+workflows, services, and PlatformJobs. Each worker admits one live summary and
+one backfill summary at a time; backfills therefore cannot occupy the live
+summary slot. Additional capable launchers add capacity for both handlers.
+
+The hello advertises exact handler versions and the summary claim protocol.
+Older launchers retain workflow/agent-run eligibility, but cannot claim summary
+work. Upgrade the APIs and provide at least one capable launcher when rolling
+out remote summaries; otherwise summaries remain queued rather than executing
+in an API process.
+
+Each summary attempt carries its `ExecutionWorkerClaim` UUID into the child and
+reconnect inventory. Every short summary write transaction locks the physical
+worker before the run and then checks that exact claim. Regeneration replaces
+the dispatch and invalidates earlier claims, including attempts on the same
+worker. No database lock or connection is held over a provider request. A stale
+attempt may already have consumed provider tokens; its result cannot overwrite
+the current attempt. This is fencing, not exactly-once model execution.
+
+Backfill progress is aggregated from durable member outcomes instead of
+incrementing counters on delivery. Terminal replay and recovery after a child
+commits but exits before reporting therefore do not double count progress.
+Regeneration retains membership in an active backfill so the parent can finish.
 
 The supported `python -m src.worker.main` and `python -m src.scheduler.main`
 commands are retained. They now start the lightweight launcher while preserving
@@ -91,7 +110,8 @@ The remote-control host authenticates and fences launcher enrollment, then
 reconciles the launcher's inventory against durable rows before treating a
 child as live. A Kubernetes Job and Pod supply their UIDs automatically at
 enrollment; operators do not configure a separate enrollment system. A fenced
-API owner performs all durable callbacks. On a rolling API handoff, a launcher
+API owner performs canonical dispatch and lifecycle callbacks; children persist
+their typed results through ordinary handlers. On a rolling API handoff, a launcher
 keeps its children alive while a successor API replica authenticates and adopts
 its inventory. Losing a WebSocket therefore does not itself fail or kill
 children. A connected launcher can instead be asked to drain through the

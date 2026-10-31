@@ -124,12 +124,12 @@ jobs:
           mkdir dev-image
           docker pull "$IMAGE"
           docker save "$IMAGE" | gzip > dev-image/worker-image.tar.gz
-          config="$(docker image inspect --format '{{.Id}}' "$IMAGE")"
+          local_id="$(docker image inspect --format '{{.Id}}' "$IMAGE")"
           archive="$(sha256sum dev-image/worker-image.tar.gz | cut -d' ' -f1)"
           jq -n --arg source "$GITHUB_SHA" --arg image "$IMAGE" \
-            --arg version "$VERSION" --arg config "$config" --arg archive "$archive" \
+            --arg version "$VERSION" --arg local_id "$local_id" --arg archive "$archive" \
             --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" \
-            '{source:$source,image:$image,version:$version,config_digest:$config,archive_sha256:$archive,run_id:$run,run_attempt:$attempt}' \
+            '{source:$source,image:$image,version:$version,local_image_id:$local_id,archive_sha256:$archive,run_id:$run,run_attempt:$attempt}' \
             > dev-image/identity.json
 
       - name: Retain exact development image and identity

@@ -46,6 +46,7 @@ EXECUTION_HANDLERS = (
     ("agent.summarize", 1),
     ("agent.summarize_backfill", 1),
 )
+SUMMARY_CLAIM_PROTOCOL = 1
 
 
 def hello_execution_handlers(frame: Mapping[str, Any]) -> tuple[tuple[str, int], ...]:
@@ -67,7 +68,13 @@ def hello_execution_handlers(frame: Mapping[str, Any]) -> tuple[tuple[str, int],
         if value in pairs:
             raise ProtocolError("duplicate launcher handler")
         pairs.append(value)
-    return tuple(pair for pair in EXECUTION_HANDLERS if pair in pairs)
+    summary_protocol = frame.get("summary_claim_protocol", 0)
+    if isinstance(summary_protocol, bool) or not isinstance(summary_protocol, int) or summary_protocol < 0:
+        raise ProtocolError("invalid summary claim protocol")
+    return tuple(
+        pair for pair in EXECUTION_HANDLERS if pair in pairs
+        and (pair in LEGACY_EXECUTION_HANDLERS or summary_protocol == SUMMARY_CLAIM_PROTOCOL)
+    )
 
 
 def hello_credential_protocol(frame: Mapping[str, Any]) -> int:

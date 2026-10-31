@@ -28,7 +28,8 @@ from src.worker.remote.protocol import (
 
 def test_handler_negotiation_keeps_old_launchers_out_of_summary_claims() -> None:
     assert hello_execution_handlers({}) == LEGACY_EXECUTION_HANDLERS
-    assert hello_execution_handlers({"handlers": [list(pair) for pair in EXECUTION_HANDLERS]}) == EXECUTION_HANDLERS
+    assert hello_execution_handlers({"handlers": [list(pair) for pair in EXECUTION_HANDLERS], "summary_claim_protocol": 1}) == EXECUTION_HANDLERS
+    assert hello_execution_handlers({"handlers": [list(pair) for pair in EXECUTION_HANDLERS]}) == LEGACY_EXECUTION_HANDLERS
     assert hello_execution_handlers({"handlers": [["agent.summarize", 2], ["agent.run", 1]]}) == (("agent.run", 1),)
 
 

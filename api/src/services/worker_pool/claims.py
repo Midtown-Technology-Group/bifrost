@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import exists, func, select, text, tuple_, update
 
@@ -258,8 +258,10 @@ async def claim_next(
             ).one_or_none()
             if row is None:
                 return None
+            claim_id = uuid4()
             db.add(
                 ExecutionWorkerClaim(
+                    id=claim_id,
                     worker_id=incarnation_id,
                     family=row.dispatch_family,
                     subject_id=row.subject,
@@ -283,7 +285,10 @@ async def claim_next(
             claim = PoolClaim(
                 dispatch_id=row.dispatch_id,
                 handler=row.handler,
-                message=row.message,
+                message={
+                    **row.message,
+                    **({"claim_id": str(claim_id)} if row.dispatch_family == "agent_summary" else {}),
+                },
                 subject_id=row.subject,
                 memory_request_bytes=row.memory_request_bytes,
                 queued_at=row.queued_at,

@@ -18,7 +18,8 @@ from sqlalchemy import delete, select
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.ai_usage import AIUsage
 from src.models.orm.execution_workers import ExecutionWorker, ExecutionWorkerClaim
-from src.services.execution.summary_dispatch import SummaryOwnershipLost, summary_owner_session
+from src.services.execution.summary_dispatch import SummaryOwnershipLost, summary_owner_session, request_summary
+from src.models.orm.work_dispatches import WorkDispatch
 from src.services.llm import LLMResponse
 from src.services.execution.run_summarizer import (
     _clamp_confidence,
@@ -80,21 +81,27 @@ def _build_mock_client(response):
     return client
 
 
-async def test_lost_summary_worker_cannot_overwrite_a_replacement_result(async_session_factory, seed_completed_run):
+@pytest.mark.parametrize("interruption", ["worker_loss", "regeneration"])
+async def test_stale_summary_cannot_overwrite_a_replacement_result(async_session_factory, seed_completed_run, interruption):
     from src.services.execution import run_summarizer as mod
 
     worker_id = uuid4()
+    claim_id = uuid4()
     async with async_session_factory() as db:
         db.add(ExecutionWorker(id=worker_id, form="static", state="ready", slots=1))
         await db.flush()
-        db.add(ExecutionWorkerClaim(worker_id=worker_id, family="agent_summary", subject_id=seed_completed_run.id))
+        db.add(ExecutionWorkerClaim(id=claim_id, worker_id=worker_id, family="agent_summary", subject_id=seed_completed_run.id))
         await db.commit()
 
     async def complete(**_kwargs):
         async with async_session_factory() as db:
             worker = await db.get(ExecutionWorker, worker_id)
-            worker.state = "lost"
             run = await db.get(AgentRun, seed_completed_run.id)
+            if interruption == "worker_loss":
+                worker.state = "lost"
+            else:
+                await request_summary(db, run)
+                db.add(ExecutionWorkerClaim(worker_id=worker_id, family="agent_summary", subject_id=run.id))
             run.asked, run.summary_status = "replacement result", "completed"
             await db.commit()
         return _build_mock_llm_response('{"asked": "stale result", "did": "stale"}')
@@ -106,13 +113,14 @@ async def test_lost_summary_worker_cannot_overwrite_a_replacement_result(async_s
             with pytest.raises(SummaryOwnershipLost):
                 await summarize_run(
                     seed_completed_run.id,
-                    partial(summary_owner_session, async_session_factory, seed_completed_run.id, worker_id),
+                    partial(summary_owner_session, async_session_factory, seed_completed_run.id, worker_id, claim_id),
                 )
         async with async_session_factory() as db:
             run = await db.get(AgentRun, seed_completed_run.id)
             assert (run.asked, run.summary_status) == ("replacement result", "completed")
     finally:
         async with async_session_factory() as db:
+            await db.execute(delete(WorkDispatch).where(WorkDispatch.subject_id == seed_completed_run.id))
             await db.execute(delete(ExecutionWorker).where(ExecutionWorker.id == worker_id))
             await db.commit()
 

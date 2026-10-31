@@ -638,10 +638,10 @@ class ApiExecutor(PoolWorker):
                 # A same-owner reconnect: its original wait still runs.
                 continue
             self._wait_for_adopted_agent_run(agents.adopt(route_id, run_id), request_bytes)
-        for route_id, (run_id, request_bytes, handler) in snapshot.get("summaries", {}).items():
+        for route_id, (run_id, request_bytes, handler, claim_id) in snapshot.get("summaries", {}).items():
             if not agents.tracks(route_id):
                 self._wait_for_adopted_agent_run(
-                    agents.adopt(route_id, run_id, handler=handler), request_bytes,
+                    agents.adopt(route_id, run_id, handler=handler, claim_id=claim_id), request_bytes,
                 )
         if self._service_claim_loop is None:
             return
