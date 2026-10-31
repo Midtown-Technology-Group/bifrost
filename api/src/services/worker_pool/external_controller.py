@@ -42,7 +42,7 @@ class ExternalWorkerPoolController(WorkerCapacityController):
         return and_(ExecutionWorker.form == "external", ExecutionWorker.capacity_scope == self.profile.scope)
 
     def _binding_fields(self, worker_id: UUID) -> dict[str, Any]:
-        return {"capacity_scope": self.profile.scope}
+        return {"capacity_scope": self.profile.scope, "version": self.profile.worker_version}
 
     def _sizing(self, policy: KubernetesPolicy, workers: Any) -> JobSizing:
         try:
@@ -72,7 +72,13 @@ class ExternalWorkerPoolController(WorkerCapacityController):
             if worker is None:
                 return
             state, uid, limit = worker.state, worker.capacity_resource_uid, worker.memory_limit_bytes
+            version = worker.version
             created_at = worker.created_at
+        if state == "reserved" and version != self.profile.worker_version:
+            # A provider rollout cannot relabel an already reserved incarnation.
+            # Fence it before cleanup; queued demand may reserve a fresh UUID.
+            await self._record_loss(worker_id, uid, "provider_version_changed", False)
+            return
         resource = await self.client.get(worker_id, self.profile.scope)
         if uid is not None and resource is not None and resource.resource_uid != uid:
             raise CapacityProtocolError("Provider resource UID changed for an existing incarnation")
@@ -86,7 +92,7 @@ class ExternalWorkerPoolController(WorkerCapacityController):
                 if limit is None:
                     raise CapacityProtocolError("Reserved worker has no immutable memory limit")
                 resource = await self.client.prepare(WorkerCapacityReservation(
-                    worker_id=worker_id, worker_version=self.profile.worker_version,
+                    worker_id=worker_id, worker_version=version,
                     memory_limit_bytes=limit,
                     max_lifetime_seconds=self.settings.pool_max_lifetime_seconds,
                     drain_grace_seconds=WORKER_DRAIN_GRACE_SECONDS,

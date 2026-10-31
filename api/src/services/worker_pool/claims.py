@@ -100,6 +100,8 @@ async def admit_external_worker(
                 ExecutionWorker.state == "starting",
                 ExecutionWorker.capacity_resource_uid == resource_uid,
                 ExecutionWorker.remote_launcher_id.is_(None),
+                ExecutionWorker.version.is_not(None),
+                ExecutionWorker.version == version,
             )
             .values(
                 state="ready", remote_launcher_id=launcher_id, version=version, hostname=hostname,

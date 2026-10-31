@@ -146,19 +146,41 @@ async def test_external_admission_binds_only_the_first_process(db, capacity):
     launcher_id = uuid4()
 
     assert await claims.admit_external_worker(
-        worker_id, resource_uid="wrong", launcher_id=launcher_id, version="build", hostname="unbound",
+        worker_id, resource_uid="wrong", launcher_id=launcher_id, version="test-worker", hostname="unbound",
     ) is None
+    for version in (None, "previous-worker"):
+        assert await claims.admit_external_worker(
+            worker_id, resource_uid=uid, launcher_id=launcher_id, version=version, hostname="wrong-build",
+        ) is None
     assert await claims.admit_external_worker(
-        worker_id, resource_uid=uid, launcher_id=launcher_id, version="build", hostname="physical-worker",
+        worker_id, resource_uid=uid, launcher_id=launcher_id, version="test-worker", hostname="physical-worker",
     ) == 0
     assert await claims.admit_external_worker(
-        worker_id, resource_uid=uid, launcher_id=uuid4(), version="build", hostname="replacement",
+        worker_id, resource_uid=uid, launcher_id=uuid4(), version="test-worker", hostname="replacement",
     ) is None
     async with db.context() as session:
         worker = await session.get(ExecutionWorker, worker_id)
         assert worker.remote_launcher_id == launcher_id
-        assert worker.version == "build"
+        assert worker.version == "test-worker"
         assert worker.hostname == "physical-worker"
+
+
+async def test_provider_rollout_fences_an_old_reservation_instead_of_relabeling_it(db, capacity):
+    await _accept_pool_run()
+    [old_id] = await capacity.pool.launch_for_demand(capacity.policy)
+    capacity.provider.profile = capacity.provider.profile.model_copy(update={"worker_version": "next-worker"})
+    capacity.pool.profile = capacity.provider.profile
+    capacity.pool.version = "next-worker"
+    await capacity.pool.reconcile_worker(old_id, capacity.policy)
+    assert capacity.provider.resources == {}
+    assert capacity.provider.starts == []
+    async with db.context() as session:
+        old = await session.get(ExecutionWorker, old_id)
+        assert (old.state, old.version, old.end_reason) == ("lost", "test-worker", "provider_version_changed")
+    [new_id] = await capacity.pool.launch_for_demand(capacity.policy)
+    assert new_id != old_id
+    async with db.context() as session:
+        assert (await session.get(ExecutionWorker, new_id)).version == "next-worker"
 
 
 async def test_provider_cannot_replace_an_existing_resource_uid(db, capacity):
@@ -185,7 +207,7 @@ async def test_provider_failure_never_ends_a_fresh_heartbeat_as_silent(db, capac
     [worker_id] = await capacity.pool.launch_for_demand(capacity.policy)
     await capacity.pool.reconcile_worker(worker_id, capacity.policy)
     uid = capacity.provider.resources[str(worker_id)]["resource_uid"]
-    await claims.admit_external_worker(worker_id, resource_uid=uid, launcher_id=uuid4(), version="build", hostname="physical-worker")
+    await claims.admit_external_worker(worker_id, resource_uid=uid, launcher_id=uuid4(), version="test-worker", hostname="physical-worker")
     await capacity.pool.reconcile_worker(worker_id, capacity.policy)
     async with db.context() as session:
         assert (await session.get(ExecutionWorker, worker_id)).state == "ready"
@@ -197,7 +219,7 @@ async def test_lost_provider_resource_fences_its_running_work_before_cleanup(db,
     await capacity.pool.reconcile_worker(worker_id, capacity.policy)
     resource = capacity.provider.resources[str(worker_id)]
     await claims.admit_external_worker(
-        worker_id, resource_uid=resource["resource_uid"], launcher_id=uuid4(), version="build", hostname="physical-worker",
+        worker_id, resource_uid=resource["resource_uid"], launcher_id=uuid4(), version="test-worker", hostname="physical-worker",
     )
     await claims.heartbeat_worker(
         worker_id, active_runs=0, runs_handled=0, package_generation=0,

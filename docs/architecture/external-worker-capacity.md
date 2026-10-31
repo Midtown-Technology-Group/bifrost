@@ -46,7 +46,10 @@ models in `api/shared/models.py`.
 | `POST /v1/workers/{uuid}/start` | Start the prepared resource matching the supplied `resource_uid`. Return `starting` or `running`. |
 | `DELETE /v1/workers/{uuid}` | Stop and delete only the resource matching the supplied `resource_uid`. Return a `deleted` tombstone. |
 
-The controller first commits the canonical reserved worker UUID. It then
+The controller first commits the canonical reserved worker UUID and expected
+worker build version. A provider version change fences an unprepared older
+reservation rather than relabeling its UUID; queued demand can reserve a new one.
+The controller then
 prepares the provider resource, commits its resource UID and `starting` state,
 and only then requests a start. Resource reconciliation HTTP calls hold no database connections
 or row locks. Concurrent controllers converge on the same UUID and immutable
@@ -67,7 +70,9 @@ are covered by the existing signed launcher handshake. Kubernetes job/pod UIDs
 are forbidden for this form. External workers cannot register themselves as
 static workers.
 
-Admission requires a matching canonical `starting` reservation and resource UID.
+Admission requires a matching canonical `starting` reservation, resource UID,
+and reported worker build version. An unknown or different build cannot enroll,
+and a reconnect cannot change its admitted build version.
 It atomically binds the first physical launcher UUID. Reconnection preserves
 that identity; a replacement process cannot take over the same incarnation.
 Normal claim-generation and owner fences continue to protect every work family.

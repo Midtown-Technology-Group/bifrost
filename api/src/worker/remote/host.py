@@ -982,6 +982,8 @@ class RemoteControlHost:
                             ExecutionWorker.state.in_(("ready", "draining")),
                             ExecutionWorker.capacity_resource_uid == hello.resource_uid,
                             ExecutionWorker.remote_launcher_id == hello.launcher_id,
+                            ExecutionWorker.version.is_not(None),
+                            ExecutionWorker.version == version,
                         )
                     )
                 if bound_resource is None:
