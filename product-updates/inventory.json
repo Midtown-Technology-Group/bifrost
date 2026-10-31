@@ -2,9 +2,9 @@
   "schema_version": 1,
   "repository": "gobifrost/bifrost",
   "base_ref": "ade714a08b95c84daa285e859ebece55f45c6754",
-  "target_ref": "88f9567e3d04e05b153360a14b2f14668db998e1",
-  "collected_at": "2026-10-30T23:44:25Z",
-  "source_ref": "https://api.github.com/repos/gobifrost/bifrost/compare/ade714a08b95c84daa285e859ebece55f45c6754...88f9567e3d04e05b153360a14b2f14668db998e1",
+  "target_ref": "087ffade922de931d2a57bd8a72531f8240e15f7",
+  "collected_at": "2026-10-31T04:45:56Z",
+  "source_ref": "https://api.github.com/repos/gobifrost/bifrost/compare/ade714a08b95c84daa285e859ebece55f45c6754...087ffade922de931d2a57bd8a72531f8240e15f7",
   "commits": [
     {
       "sha": "2399fbb049e6b6c121ca07980ffa649844c0d477",
@@ -2146,6 +2146,41 @@
       "subject": "Add reviewed automatic App SDK upgrades (#1153)",
       "prs": [
         1153
+      ]
+    },
+    {
+      "sha": "127621d4a730c6c379be3403fa1db819ae1a82fa",
+      "subject": "Activate App SDK Upgrades in Product Updates (#1154)",
+      "prs": [
+        1154
+      ]
+    },
+    {
+      "sha": "aa3caac0622c023f369be48f2d24ac5e57d820a9",
+      "subject": "Fix automatic App SDK rebuild failures (#1155)",
+      "prs": [
+        1155
+      ]
+    },
+    {
+      "sha": "a29f7bcba17a4a0d4da7f7e33ffa2abbb4f45b8d",
+      "subject": "Activate App SDK rebuild fix in Product Updates (#1156)",
+      "prs": [
+        1156
+      ]
+    },
+    {
+      "sha": "e5da6d0c1fb751d4155b1b65458bfedfc2bec112",
+      "subject": "fix(worker): preserve launcher enrollment and reported build identity (#1157)",
+      "prs": [
+        1157
+      ]
+    },
+    {
+      "sha": "087ffade922de931d2a57bd8a72531f8240e15f7",
+      "subject": "Serve App SDK updates from the instance (#1158)",
+      "prs": [
+        1158
       ]
     }
   ],
@@ -6136,6 +6171,71 @@
       "merge_commit": "88f9567e3d04e05b153360a14b2f14668db998e1",
       "body": "## Product Updates\n\n- [x] Highlight \u2014 620a0f81-11c2-4cfb-90c7-345317efaab6 (approved canonical entry).\n\n## Summary\n\nAdd **App SDK Upgrades** in Settings \u2192 Maintenance so the platform can attempt required SDK updates that need no app code changes. The setting starts **off** during dogfood testing; the reviewed automatic transition is contract 2 \u2192 3.\n\nThe elected scheduler queues the existing `application.sdk_update` PlatformJob, at most 20 apps per pass. Automatic attempts share manual App/Solution locks, pin the requested SDK, preserve unrelated locked dependencies with `npm ci`, and keep the prior deployment artifacts. Failed attempts leave the active deployment unchanged and require a manual retry; job history prevents repeated automatic attempts for the same App and target.\n\nNew SDK-update jobs use payload version 2 so older workers cannot silently ignore target pinning. New workers also finish already-queued v1 manual jobs through an exact historical schema that rejects automatic/target fields. Authentication expiry and revocation checks are unchanged.\n\n## Validation\n\n- API Pyright and Ruff; client TypeScript and ESLint: passed.\n- Focused frontend service/component/SDK tripwire coverage: 13 passed.\n- Settings authorization/audit, existing manual/Solution SDK update boundaries, and one actual automatic worker rebuild: 11 passed. The live rebuild verifies activation, old artifact retention, and no duplicate on reconciliation.\n- Maintenance browser happy path plus auth setup: 2 passed; screenshot reviewed.\n- Final backend unit/shared-contract checks: 270 passed.\n- Manual build/error paths, SDK memory-profile enqueue, build safeguards, and generated references: 34 targeted consumer checks passed; skill mirror validation passed.\n- Live scheduler diagnostics: all 4 passed, including the schedule inventory with App SDK Upgrades. The stale-list queue failure was reproduced in isolation before correcting the expectation.\n\nFull suites were not run locally; the protected merge queue remains the complete-suite gate.\n\n<details>\n<summary>Focused commands</summary>\n\n```bash\n./test.sh quality api\n(cd client && npm run tsc)\n(cd client && npm run lint)\n./test.sh client unit src/services/appSdkUpgradeSettings.test.ts src/pages/settings/AppSdkUpgradeSettings.test.tsx src/pages/settings/Maintenance.test.tsx src/lib/app-sdk/sdk-contract.test.ts\n./test.sh tests/e2e/api/test_app_sdk_upgrade_settings.py tests/e2e/platform/test_application_sdk_update.py tests/e2e/platform/test_automatic_app_sdk_upgrade.py -q --durations=0\n./test.sh client e2e --screenshots e2e/app-sdk-upgrades.admin.spec.ts\n./test.sh tests/unit/test_app_sdk_upgrade_settings.py tests/unit/shared/test_automatic_app_sdk_upgrades.py tests/unit/test_sdk_automatic_upgrade_contracts.py tests/unit/services/test_application_build_sdk_safeguards.py tests/unit/jobs/test_application_sdk_update.py tests/unit/test_application_sdk_status.py tests/unit/services/test_platform_jobs.py tests/unit/jobs/test_platform_job_runner.py tests/unit/scheduler/test_control.py tests/unit/test_access_list.py tests/unit/test_dto_flags.py tests/unit/test_contract_version.py tests/unit/jobs/test_platform_job_catalog.py tests/unit/services/test_operation_inventory.py -q --durations=10\n./test.sh tests/unit/test_solution_app_build.py tests/unit/routers/test_application_job_memory_profiles.py tests/unit/services/test_application_build_sdk_safeguards.py tests/unit/test_skill_appendix_fresh.py tests/unit/jobs/test_application_sdk_update.py -q --durations=10\npython3 scripts/check_skill_mirrors.py\n./test.sh tests/e2e/platform/test_scheduler_diagnostics.py -q --durations=0\n```\n</details>\n",
       "metadata_ref": "https://api.github.com/repos/gobifrost/bifrost/pulls/1153"
+    },
+    {
+      "number": 1154,
+      "title": "Activate App SDK Upgrades in Product Updates",
+      "url": "https://github.com/gobifrost/bifrost/pull/1154",
+      "author": {
+        "login": "jackmusick",
+        "type": "User"
+      },
+      "merged_at": "2026-10-31T00:13:24Z",
+      "merge_commit": "127621d4a730c6c379be3403fa1db819ae1a82fa",
+      "body": "Refresh the cumulative verified Product Updates metadata through merged #1153 so its approved Automatic App SDK Upgrades note appears in image bundles. Preserve all 304 previously verified PR records, existing entry prose, contributor evidence, and the authentication notice and prompt.\n\nValidation: canonical Product Updates validation passes. The actual image-preparation helper includes the new entry and preserves all 33 previous approved entries unchanged. This changes cached metadata only.\n\nProduct Updates: Omit \u2014 internal activation of the already approved #1153 announcement.\n",
+      "metadata_ref": "https://api.github.com/repos/gobifrost/bifrost/pulls/1154"
+    },
+    {
+      "number": 1155,
+      "title": "Fix automatic App SDK rebuild failures",
+      "url": "https://github.com/gobifrost/bifrost/pull/1155",
+      "author": {
+        "login": "jackmusick",
+        "type": "User"
+      },
+      "merged_at": "2026-10-31T01:30:33Z",
+      "merge_commit": "aa3caac0622c023f369be48f2d24ac5e57d820a9",
+      "body": "## Summary\n\nAutomatic App SDK upgrades could fail when npm normalized unrelated lockfile metadata. Solution App rebuilds could also fail while validating unrelated entity manifests in retained source.\n\nCopy only refreshed SDK entries into the original lockfile, preserving other dependency values and requiring matching root declarations plus a successful `npm ci`. Resolve only the target App through the shared strict App parser and archive safety checks; full Solution validation stays strict.\n\n## Validation\n\n- 38 focused SDK safeguard, shared build, cache, and job tests passed:\n  `./test.sh tests/unit/services/test_application_build_sdk_safeguards.py tests/unit/test_solution_app_build.py tests/unit/test_solution_zip_install_cache.py tests/unit/jobs/test_application_sdk_update.py -v`\n- 35 source resolver and shared definition tests passed:\n  `./test.sh tests/unit/test_application_source_resolver.py tests/unit/test_solution_definition.py -v`\n- Two existing live paths passed:\n  `./test.sh tests/e2e/platform/test_automatic_app_sdk_upgrade.py tests/e2e/platform/test_captured_app_sdk_source.py -v --durations=0`\n  The automatic path uses one worker job and one real Vite build (31.4 seconds), now with a developer lockfile that omits the platform-injected SDK. No extra build jobs were added.\n- `./test.sh quality api` passed (Pyright and Ruff).\n\nFull backend suites and browser suites were not run locally; the protected merge queue remains the complete-suite gate.\n\n## Product Updates\n\n- [x] Other \u2014 App SDK updates no longer fail on npm lockfile metadata or unrelated Solution entity definitions.\n",
+      "metadata_ref": "https://api.github.com/repos/gobifrost/bifrost/pulls/1155"
+    },
+    {
+      "number": 1156,
+      "title": "Activate App SDK rebuild fix in Product Updates",
+      "url": "https://github.com/gobifrost/bifrost/pull/1156",
+      "author": {
+        "login": "jackmusick",
+        "type": "User"
+      },
+      "merged_at": "2026-10-31T02:25:34Z",
+      "merge_commit": "a29f7bcba17a4a0d4da7f7e33ffa2abbb4f45b8d",
+      "body": "Refresh cached Product Updates metadata through merged SDK rebuild repair #1155 so its approved Fixed summary appears in image bundles. Preserve all 306 previously verified PR records, all 34 existing entries, and all 86 existing smaller-change summaries.\n\nA focused CI-only E2E repair removes an incidental enqueue-status snapshot assertion. A worker may claim or finish the durable job before the 202 response is serialized; the test continues to verify the accepted location, durable identity, metadata, and requester visibility. This adds no runtime behavior.\n\nCanonical validation and the actual image-preparation helper pass; the prepared bundle includes #1155's summary and keeps the existing entries unchanged.\n\nProduct Updates: Omit \u2014 internal activation of the already approved #1155 fix summary and CI-only test repair.",
+      "metadata_ref": "https://api.github.com/repos/gobifrost/bifrost/pulls/1156"
+    },
+    {
+      "number": 1157,
+      "title": "fix(worker): preserve launcher enrollment and reported build identity",
+      "url": "https://github.com/gobifrost/bifrost/pull/1157",
+      "author": {
+        "login": "MTG-Thomas",
+        "type": "User"
+      },
+      "merged_at": "2026-10-31T02:45:51Z",
+      "merge_commit": "e5da6d0c1fb751d4155b1b65458bfedfc2bec112",
+      "body": "Static launchers were recorded with the admitting API's build, and startup failures could retry enrollment with a consumed physical identity. Losing the initial welcome also reset the hello sequence on the next connection.\n\nThis records the launcher's reported build (or unknown when absent), retains the initial hello sequence across transport failures, and exits with status 1 after failed template initialization. Both workflow and agent templates still load before memory admission.\n\nRefs #1105 for the build-reporting portion. This does not resolve that issue's replacement, drain, or zero-worker wake-up design. These shared-runtime fixes were found during the full-worker Cloudflare development experiment; scalable summaries and provider/network acceptance remain separate work.\n\nValidation:\n\n- `./test.sh tests/unit/dev/test_thin_launcher.py tests/unit/worker/remote/test_host.py tests/unit/test_api_agent_executor.py tests/unit/test_pool_main_hosting.py tests/unit/services/worker_pool/test_worker_pool.py -v`: 181 passed, JUnit reports zero failures/errors.\n- Both new launcher regressions failed against the original implementation before the fix.\n- API Pyright and Ruff passed through `./test.sh quality api`.\n- Full backend, browser, and client suites were not run locally; the normal merge queue remains the complete-suite gate.\n\n## Product Updates\n\n- [x] Other \u2014 Workers retain their reported build version and recover correctly from interrupted enrollment or failed startup.",
+      "metadata_ref": "https://api.github.com/repos/gobifrost/bifrost/pulls/1157"
+    },
+    {
+      "number": 1158,
+      "title": "Serve App SDK updates from the instance",
+      "url": "https://github.com/gobifrost/bifrost/pull/1158",
+      "author": {
+        "login": "jackmusick",
+        "type": "User"
+      },
+      "merged_at": "2026-10-31T04:39:39Z",
+      "merge_commit": "087ffade922de931d2a57bd8a72531f8240e15f7",
+      "body": "## Summary\n\nApp bundles currently freeze the SDK's transport and authentication code, so compatible SDK fixes require rebuilding each App. New builds install a small binding and load the existing full SDK from the instance as prebuilt JavaScript. The App keeps its own React, public imports, provider props, and error constructors. After one SDK update, compatible implementation changes arrive on document reload with the App's deployment unchanged.\n\nFactories are built into the API image, published to shared storage before readiness, and loaded through an uncached descriptor plus immutable SHA-256/SRI assets. Factory selection is shared per document/origin/major; SDK state and credentials stay inside each App binding. Production does not run a development server when an App opens.\n\nBinding provenance flows through source builds, CLI prebuilds, activation, status, and bundle manifests. Version 3 SDK-update jobs fence the binding major and retain exact historical schemas for already queued manual jobs. Supported hosted majors ignore server wire-only staleness; changing the public major requires an explicit migration. The initial automatic hosted-migration declaration is empty, so adoption starts with manual Update SDK after an ordinary instance upgrade. Existing automatic-upgrade settings are preserved.\n\nThe CLI preview proxy also forwards expiry close code 4001 and exposes a nonce-protected, tokenless acknowledgement through its existing auth bridge so refresh/reconnect remains functional. Authentication expiry and authorization checks are unchanged.\n\n## Validation\n\n- Focused backend units and DTO/CLI/MCP/skill tripwires: 542 passed, zero skips; JUnit verified.\n- Focused client units: 134 passed across ten files; TypeScript and ESLint passed (one existing seed-review-pack console warning).\n- API Pyright/Ruff: passed.\n- Full PR unit CI exposed six stale App/metadata fixtures and two endpoint-inventory tripwires. Updated fixtures, regenerated inventory, and all 47 focused correction/status checks passed; the full suite must pass again on this head.\n- Existing one-job worker migration: passed (10.82 s call, 3.19 s setup); proves build/activation, hosted manifest provenance, and retained recovery artifacts.\n- Browser legacy/hosted/reloaded-SDK journey: passed (21.3 s including authentication setup). A bundled wire-contract-3 SDK makes a real authenticated API request without loading a hosted artifact. The hosted App then uses the real first artifact and an integrity-valid simulated compatible update; App entry bytes and build stamps stay unchanged. This does not claim arbitrary old wire contracts remain supported.\n- React 18.3.1 factory probe with distinct host React 19.2.0: provider/hooks/header/Lucide and separate App/org transport headers passed.\n- Independent Astra implementation, lifecycle, and Product Updates copy review: approved, no remaining P1/P2 findings.\n\nFull backend, Vitest, and Playwright suites were not run locally; the protected merge queue remains the complete-suite gate. The first introduction of hosted endpoints can show a load error if a newly migrated App reaches an older API replica before an ordinary upgrade finishes; reload after upgrade. Prebuilt metadata is the privileged deploy author's attestation, without JavaScript inspection.\n\n## Product Updates\n\n- [x] Highlight \u2014 \u201cSDK Updates Without App Rebuilds\u201d; entry `a978b8c0-cde0-4b05-bf6d-7cb333ed914a`, with source PR and contributor verified from GitHub.\n\n<details>\n<summary>Exact focused commands</summary>\n\n```bash\n./test.sh tests/unit/test_sdk_package.py tests/unit/test_sdk_package_fingerprint.py tests/unit/test_sdk_automatic_upgrade_contracts.py tests/unit/test_hosted_sdk_artifact.py tests/unit/test_application_sdk_status.py tests/unit/jobs/test_application_sdk_update.py tests/unit/shared/test_automatic_app_sdk_upgrades.py tests/unit/services/test_application_build_sdk_safeguards.py tests/unit/test_solution_app_deploy.py tests/unit/test_solution_start_sdk_warning.py tests/unit/test_cli_solution_deploy_phases.py tests/unit/routers/test_app_code_files.py tests/unit/test_solution_dev_proxy.py tests/unit/test_dto_flags.py tests/unit/test_contract_version.py tests/unit/test_mcp_thin_wrapper.py tests/unit/test_cli_surface_smoke.py tests/unit/test_skill_appendix_fresh.py -v\n./test.sh tests/unit/jobs/test_application_deploy.py tests/unit/routers/test_application_job_memory_profiles.py tests/unit/services/test_operation_inventory.py tests/unit/test_solution_id_on_public_models.py tests/unit/test_solution_sdk_aggregates.py tests/unit/test_application_sdk_status.py -v\n./test.sh quality api\n./test.sh client unit src/lib/app-sdk/hosted-loader.test.ts src/lib/app-sdk/hosted-binding.test.tsx src/lib/app-sdk/hosted-contract.test.ts src/lib/app-sdk/errors.test.ts src/lib/app-sdk/tables.test.ts src/lib/app-sdk/files.test.ts src/lib/app-sdk/ws-client.test.ts src/components/jsx-app/StandaloneV2App.test.tsx src/components/jsx-app/BundledAppShell.test.tsx src/pages/settings/AppSdkUpgradeSettings.test.tsx\nnpm --prefix client run tsc\nnpm --prefix client run lint\n./test.sh tests/e2e/platform/test_automatic_app_sdk_upgrade.py::test_automatic_upgrade_builds_once_and_keeps_recovery_artifacts -v --durations=0\n./test.sh client e2e e2e/hosted-app-sdk.admin.spec.ts\npython3 scripts/check_skill_mirrors.py\n```\n\n</details>\n",
+      "metadata_ref": "https://api.github.com/repos/gobifrost/bifrost/pulls/1158"
     }
   ]
 }
