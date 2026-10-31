@@ -183,6 +183,44 @@ async def test_provider_rollout_fences_an_old_reservation_instead_of_relabeling_
         assert (await session.get(ExecutionWorker, new_id)).version == "next-worker"
 
 
+async def test_recovered_preparation_cannot_bind_or_start_a_different_build(db, capacity):
+    await _accept_pool_run()
+    [worker_id] = await capacity.pool.launch_for_demand(capacity.policy)
+    # Preparation committed at the provider, but its response was lost before
+    # the canonical resource UID could be bound.
+    await capacity.client.prepare(WorkerCapacityReservation(
+        worker_id=worker_id, worker_version="test-worker", memory_limit_bytes=2 * GIB,
+        max_lifetime_seconds=SETTINGS.pool_max_lifetime_seconds, drain_grace_seconds=30,
+    ), capacity.provider.profile.scope)
+    capacity.provider.resources[str(worker_id)]["worker_version"] = "wrong-worker"
+
+    with pytest.raises(CapacityProtocolError, match="build changed"):
+        await capacity.pool.reconcile_worker(worker_id, capacity.policy)
+
+    assert capacity.provider.starts == []
+    async with db.context() as session:
+        worker = await session.get(ExecutionWorker, worker_id)
+        assert worker.state == "reserved"
+        assert worker.capacity_resource_uid is None
+
+
+async def test_build_mismatch_does_not_prevent_exact_cleanup_after_fencing(db, capacity):
+    await _accept_pool_run()
+    [worker_id] = await capacity.pool.launch_for_demand(capacity.policy)
+    await capacity.pool.reconcile_worker(worker_id, capacity.policy)
+    resource = capacity.provider.resources[str(worker_id)]
+    resource["worker_version"] = "wrong-worker"
+    async with db.context() as session:
+        worker = await session.get(ExecutionWorker, worker_id)
+        worker.state = "lost"
+        await session.commit()
+
+    await capacity.pool.reconcile_worker(worker_id, capacity.policy)
+
+    assert resource["state"] == "deleted"
+    assert capacity.provider.starts == [str(worker_id)]
+
+
 async def test_provider_cannot_replace_an_existing_resource_uid(db, capacity):
     await _accept_pool_run()
     [worker_id] = await capacity.pool.launch_for_demand(capacity.policy)

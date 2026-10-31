@@ -54,8 +54,11 @@ prepares the provider resource, commits its resource UID and `starting` state,
 and only then requests a start. Resource reconciliation HTTP calls hold no database connections
 or row locks. Concurrent controllers converge on the same UUID and immutable
 resource. After an uncertain mutation response, reconciliation reads that
-resource before deciding its next action. The client follows no redirects and
-performs no automatic HTTP retries.
+resource before deciding its next action. A recovered resource must still report
+the canonical reservation build before binding or startup; a GET response does
+not bypass the build check applied to a fresh prepare response. Cleanup of a
+fenced incarnation remains possible by its exact resource UID. The client
+follows no redirects and performs no automatic HTTP retries.
 
 Providers must preserve idempotency and tombstones, reject conflicting
 reservations or resource UIDs, and never restart a stopped incarnation. Report

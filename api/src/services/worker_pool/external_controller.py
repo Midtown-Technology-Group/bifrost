@@ -86,6 +86,8 @@ class ExternalWorkerPoolController(WorkerCapacityController):
             if resource is not None and resource.state != "deleted":
                 await self.client.remove(worker_id, self.profile.scope, resource.resource_uid)
             return
+        if resource is not None and resource.worker_version != version:
+            raise CapacityProtocolError("Provider resource build changed for an existing incarnation")
         if state == "reserved":
             created = resource is None
             if resource is None:
