@@ -458,7 +458,8 @@ application environment is production.
 | Enqueue, progress, completion, notifications | `api/src/services/platform_jobs.py` |
 | Handler and policy contracts | `api/src/jobs/platform/base.py` |
 | Registered job types | `api/src/jobs/platform/registry.py` |
-| API agent executor | `api/src/worker/api_agent.py` |
+| Physical-launcher agent and summary dispatch | `api/src/worker/remote/agent_route.py` |
+| Agent and summary child runner | `api/src/jobs/agent_run_child.py` |
 | API remote-control host and launcher-specific `PoolWorker` | `api/src/worker/remote/host.py` |
 | Physical launcher and process supervisor | `api/src/worker/remote/launcher.py` |
 | Retained worker/scheduler launcher entrypoints | `api/src/worker/main.py`, `api/src/scheduler/main.py` |
