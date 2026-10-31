@@ -2,15 +2,25 @@
 import asyncio
 import json
 import struct
+import os
+import subprocess
+import sys
+import ssl
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve
 
 from src.worker.network import (
-    CREDIT, DATA, FIN, PROTOCOL, WINDOW, Tunnel, bridge_connection, configure_hosts,
+    CREDIT, DATA, FIN, PROTOCOL, WINDOW, Tunnel, bridge_connection, prepare_network_environment,
     configured_tunnels,
 )
 
@@ -35,19 +45,111 @@ def test_rejects_unsafe_network_configuration(changes):
         configured_tunnels(configuration(**changes))
 
 
-def test_network_is_explicit_and_hosts_are_idempotent(tmp_path):
+def test_private_hosts_snapshot_preserves_read_only_system_file(tmp_path):
     assert configured_tunnels(None) == []
     tunnels = configured_tunnels(configuration())
     hosts = tmp_path / "hosts"
     hosts.write_text("127.0.0.1 localhost\n")
-    configure_hosts(tunnels, hosts)
-    first = hosts.read_text()
-    configure_hosts(tunnels, hosts)
-    assert hosts.read_text() == first
-    assert "127.0.0.2 database.example.test" in first
+    hosts.chmod(0o444)
+    environment = {"PATH": os.environ["PATH"], "LD_PRELOAD": "existing.so"}
+    result = prepare_network_environment(tunnels, environment, hosts, tmp_path)
+    private_hosts = Path(result["NSS_WRAPPER_HOSTS"])
+    assert hosts.read_text() == "127.0.0.1 localhost\n"
+    assert "127.0.0.2 database.example.test" in private_hosts.read_text()
+    assert private_hosts.stat().st_mode & 0o777 == 0o644
+    assert private_hosts.parent.stat().st_mode & 0o777 == 0o755
+    assert result["LD_PRELOAD"] == "libnss_wrapper.so existing.so"
+    assert "NSS_WRAPPER_HOSTS" not in environment
+    with pytest.raises(ValueError, match="already configured"):
+        prepare_network_environment(tunnels, result, hosts, tmp_path)
+    hosts.chmod(0o644)
+    hosts.write_text("127.0.0.2 database.example.test\n")
     with pytest.raises(ValueError, match="conflicts"):
-        configure_hosts([Tunnel(tunnels[0].hostname, "127.0.0.3", 15432, tunnels[0].url)], hosts)
-    assert hosts.read_text() == first
+        prepare_network_environment([Tunnel(tunnels[0].hostname, "127.0.0.3", 15432, tunnels[0].url)], environment, hosts, tmp_path)
+
+
+def test_private_resolver_is_inherited_by_python_and_native_subprocesses(tmp_path):
+    hosts = tmp_path / "hosts"
+    hosts.write_text("127.0.0.1 localhost\n")
+    environment = prepare_network_environment(configured_tunnels(configuration()), dict(os.environ), hosts, tmp_path)
+    result = subprocess.run([
+        sys.executable, "-c",
+        "import socket,subprocess; "
+        "assert socket.getaddrinfo('database.example.test',5432)[0][4][0]=='127.0.0.2'; "
+        "assert socket.getaddrinfo('localhost',80); "
+        "assert b'127.0.0.2' in subprocess.check_output(['getent','hosts','database.example.test'])",
+    ], env=environment, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+
+
+def test_bootstrap_fails_closed_when_resolver_library_is_missing(monkeypatch, tmp_path):
+    def missing_library(name):
+        raise OSError("Resolver library is unavailable")
+
+    monkeypatch.setattr("src.worker.network.ctypes.CDLL", missing_library)
+    with pytest.raises(OSError, match="unavailable"):
+        prepare_network_environment(configured_tunnels(configuration()), {}, directory=tmp_path)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_bootstrap_executes_requested_command_with_private_resolution():
+    environment = {**os.environ, "BIFROST_WORKER_NETWORK": configuration()}
+    result = subprocess.run([
+        sys.executable, "-m", "src.worker.network", "--exec", sys.executable, "-c",
+        "import socket; assert socket.gethostbyname('database.example.test')=='127.0.0.2'",
+    ], env=environment, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.asyncio
+async def test_private_resolution_preserves_certificate_hostname_validation(tmp_path):
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "database.example.test")])
+    now = datetime.now(timezone.utc)
+    certificate = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
+                   .public_key(key.public_key()).serial_number(x509.random_serial_number())
+                   .not_valid_before(now - timedelta(minutes=1)).not_valid_after(now + timedelta(days=1))
+                   .add_extension(x509.SubjectAlternativeName([x509.DNSName("database.example.test")]), critical=False)
+                   .sign(key, hashes.SHA256()))
+    cert_path, key_path = tmp_path / "cert.pem", tmp_path / "key.pem"
+    cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert_path, key_path)
+    hosts = tmp_path / "hosts"
+    hosts.write_text("127.0.0.1 localhost\n127.0.0.2 wrong.example.test\n")
+    environment = prepare_network_environment(configured_tunnels(configuration()), dict(os.environ), hosts, tmp_path)
+
+    async def echo(reader, writer):
+        try:
+            assert await reader.readexactly(4) == b"ping"
+            writer.write(b"pong")
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    client = """
+import socket,ssl,sys
+context=ssl.create_default_context(cafile=sys.argv[1])
+try:
+    with context.wrap_socket(socket.create_connection((sys.argv[2],int(sys.argv[3]))),server_hostname=sys.argv[2]) as stream:
+        stream.sendall(b'ping')
+        assert stream.recv(4)==b'pong'
+except ssl.SSLCertVerificationError:
+    assert sys.argv[2]=='wrong.example.test'
+else:
+    assert sys.argv[2]=='database.example.test'
+"""
+    async with await asyncio.start_server(echo, "127.0.0.2", 0, ssl=context) as server:
+        for hostname in ("database.example.test", "wrong.example.test"):
+            process = await asyncio.create_subprocess_exec(
+                sys.executable, "-c", client, str(cert_path), hostname,
+                str(server.sockets[0].getsockname()[1]), env=environment,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            _, error = await process.communicate()
+            assert process.returncode == 0, error.decode()
 
 
 @pytest.mark.parametrize("field,value", [

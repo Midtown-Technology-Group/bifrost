@@ -11,11 +11,19 @@ must authorize a fixed target for each route; clients must not select arbitrary
 destinations. Do not reuse the platform signing secret as a network token.
 
 Before dropping privileges, the deployment entrypoint runs
-`python -m src.worker.network --configure-hosts`. This adds the original service
-hostnames to `/etc/hosts`, rejecting conflicting mappings. Service connection
+`python -m src.worker.network --exec /entrypoint.sh python -m src.worker.main`.
+This reads the system hosts file and creates a separate non-secret snapshot,
+rejecting conflicting mappings. It never modifies `/etc/hosts`, which may be
+managed read-only by the container provider. The image includes `libnss-wrapper`;
+bootstrap validates that library and adds it to `LD_PRELOAD`, pointing
+`NSS_WRAPPER_HOSTS` at the private snapshot before executing the normal entrypoint.
+The resolver is inherited by Python and native subprocesses. Other names retain
+normal system resolution. Service connection
 strings retain those hostnames and select the configured local listener ports.
 Database TLS therefore verifies the original database hostname; neither the
-driver nor its certificate validation requires modification. Use distinct
+driver nor its certificate validation requires modification. A real TLS test
+accepts the original hostname and rejects a mismatched certificate hostname
+while both resolve to the same loopback server. Use distinct
 loopback addresses where services require different hostnames on the same port.
 
 The launcher opens listeners before connecting to the control host and keeps

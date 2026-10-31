@@ -10,6 +10,7 @@ import asyncio
 from collections import deque
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
+import ctypes
 import ipaddress
 import json
 import logging
@@ -17,6 +18,8 @@ import os
 from pathlib import Path
 import re
 import struct
+import tempfile
+import shutil
 from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
@@ -69,9 +72,23 @@ def configured_tunnels(raw: str | None) -> list[Tunnel]:
     return tunnels
 
 
-def configure_hosts(tunnels: list[Tunnel], path: Path = Path("/etc/hosts")) -> None:
-    """Explicit root-only bootstrap; keep original hostnames for TLS verification."""
-    existing = path.read_text()
+def prepare_network_environment(
+    tunnels: list[Tunnel], environment: dict[str, str],
+    source_hosts: Path = Path("/etc/hosts"), directory: Path | None = None,
+) -> dict[str, str]:
+    """Use a private NSS hosts snapshot without modifying managed system files.
+
+    The next exec loads the resolver for Python and native subprocesses alike.
+    Original hostnames remain available to TLS certificate verification.
+    """
+    if not tunnels:
+        raise ValueError("Private network bootstrap requires explicit tunnels")
+    if environment.get("NSS_WRAPPER_HOSTS"):
+        raise ValueError("Private hosts resolution is already configured")
+    # The dynamic loader otherwise only warns and ignores an unavailable preload.
+    # Fail before exec rather than silently resolving private hosts on public DNS.
+    ctypes.CDLL("libnss_wrapper.so")
+    existing = source_hosts.read_text()
     lines = []
     for tunnel in tunnels:
         matches = [line.split("#", 1)[0].split() for line in existing.splitlines()]
@@ -83,9 +100,24 @@ def configure_hosts(tunnels: list[Tunnel], path: Path = Path("/etc/hosts")) -> N
             raise ValueError("Worker network hostname conflicts with existing host configuration")
         if not addresses:
             lines.append(f"{tunnel.address} {tunnel.hostname} # bifrost worker private transport\n")
-    if lines:
-        with path.open("a") as stream:
-            stream.write("\n" + "".join(lines))
+    snapshot = Path(tempfile.mkdtemp(prefix="bifrost-worker-network-", dir=directory))
+    try:
+        hosts = snapshot / "hosts"
+        hosts.write_text(existing + "\n" + "".join(lines))
+        hosts.chmod(0o644)
+        # The standard image entrypoint drops privileges after this bootstrap.
+        # Its children may read the non-secret snapshot but cannot edit root's file.
+        snapshot.chmod(0o755)
+        return {
+            **environment,
+            "NSS_WRAPPER_HOSTS": str(hosts),
+            "LD_PRELOAD": "libnss_wrapper.so" + (
+                " " + environment["LD_PRELOAD"] if environment.get("LD_PRELOAD") else ""
+            ),
+        }
+    except BaseException:
+        shutil.rmtree(snapshot)
+        raise
 
 
 async def bridge_connection(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, websocket) -> None:
@@ -240,6 +272,11 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--configure-hosts", action="store_true", required=True)
-    parser.parse_args()
-    configure_hosts(configured_tunnels(os.environ.get("BIFROST_WORKER_NETWORK")))
+    parser.add_argument("--exec", nargs=argparse.REMAINDER, required=True)
+    command = parser.parse_args().exec
+    if not command:
+        parser.error("--exec requires a command")
+    environment = prepare_network_environment(
+        configured_tunnels(os.environ.get("BIFROST_WORKER_NETWORK")), dict(os.environ),
+    )
+    os.execvpe(command[0], command, environment)
