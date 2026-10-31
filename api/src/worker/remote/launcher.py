@@ -768,6 +768,18 @@ async def run_launcher(
     on_ready: Callable[[], None] | None = None,
     on_stop: Callable[[], None] | None = None,
 ) -> int:
+    """Keep optional private networking alive through physical worker drain."""
+    from src.worker.network import worker_network
+
+    async with worker_network():
+        return await _run_launcher(on_ready=on_ready, on_stop=on_stop)
+
+
+async def _run_launcher(
+    *,
+    on_ready: Callable[[], None] | None = None,
+    on_stop: Callable[[], None] | None = None,
+) -> int:
     """Run one physical launcher, reconnecting without killing live children."""
     from websockets.asyncio.client import connect
 
