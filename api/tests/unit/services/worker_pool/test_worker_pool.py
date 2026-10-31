@@ -50,6 +50,8 @@ from src.services.worker_pool.manifest import WorkerJobSpec, build_worker_job_ma
 GIB = 1024 * MIB
 
 SETTINGS = SimpleNamespace(
+    worker_capacity_url=None,
+    worker_capacity_token=None,
     kubernetes_job_namespace="test",
     kubernetes_job_image="api:test",
     kubernetes_job_configmap="config",

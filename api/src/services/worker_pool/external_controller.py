@@ -19,6 +19,7 @@ from src.services.worker_pool.controller import (
     RECONCILE_SECONDS, SWEEP_SECONDS, LiveControllers, WorkerCapacityController, _now, _withdraw_live,
 )
 from src.services.worker_pool.external_client import CapacityProtocolError, ExternalCapacityClient
+from src.services.worker_pool.external_policy import validate_external_policy
 from src.services.worker_pool.liveness import silent_executor
 from src.services.worker_pool.recovery import announce_lost_runs, end_runs_of_lost_worker
 from src.services.worker_pool.sizing import JobSizing
@@ -44,13 +45,12 @@ class ExternalWorkerPoolController(WorkerCapacityController):
         return {"capacity_scope": self.profile.scope}
 
     def _sizing(self, policy: KubernetesPolicy, workers: Any) -> JobSizing:
-        if (
-            policy.worker_memory_mib * 2**20 != self.profile.memory_limit_bytes
-            or policy.largest_worker_mib * 2**20 != self.profile.memory_limit_bytes
-            or policy.max_workers > self.profile.max_workers
-            or self.settings.pool_max_lifetime_seconds > self.profile.max_lifetime_seconds
-        ):
-            raise CapacityProtocolError("Worker scaling policy exceeds or differs from provider capabilities")
+        try:
+            validate_external_policy(
+                policy, self.profile, max_lifetime_seconds=self.settings.pool_max_lifetime_seconds,
+            )
+        except ValueError as exc:
+            raise CapacityProtocolError(f"Worker policy differs from provider capabilities: {exc}") from exc
         return super()._sizing(policy, workers)
 
     async def reconcile(self) -> None:

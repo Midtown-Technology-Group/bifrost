@@ -19,7 +19,15 @@ The provider advertises an opaque scope, worker build version, fixed memory
 limit, maximum worker count, and maximum lifetime. Configure the existing worker
 scaling policy explicitly: standard and largest worker memory must equal the
 advertised memory, and the worker count and lifetime must fit its bounds.
-Incompatible policy fails reconciliation rather than silently changing limits.
+Settings -> Workers exposes scaling and concurrency for every provider;
+Kubernetes isolation controls require a deployment with Kubernetes Job access.
+Policy saves fetch the provider's current capabilities before acquiring the
+settings advisory lock, then validate the merged policy under that lock.
+An incompatible policy returns HTTP 422 without changing stored settings. If
+the provider cannot be verified, the save returns HTTP 503 with a sanitized
+message and preserves the policy. No cached profile or provider fallback is
+used. The controller independently checks the same bounds at admission, so
+capability changes after a save still fail closed at reconciliation.
 Kubernetes and external managed workers share the canonical worker ceiling,
 warm minimum, demand calculation, and memory and handler occupancy accounting.
 
@@ -40,7 +48,7 @@ models in `api/shared/models.py`.
 
 The controller first commits the canonical reserved worker UUID. It then
 prepares the provider resource, commits its resource UID and `starting` state,
-and only then requests a start. Provider HTTP calls hold no database connections
+and only then requests a start. Resource reconciliation HTTP calls hold no database connections
 or row locks. Concurrent controllers converge on the same UUID and immutable
 resource. After an uncertain mutation response, reconciliation reads that
 resource before deciding its next action. The client follows no redirects and

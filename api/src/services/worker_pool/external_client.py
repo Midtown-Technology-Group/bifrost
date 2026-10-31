@@ -12,6 +12,10 @@ class CapacityProtocolError(RuntimeError):
     """Provider response cannot be bound to the requested worker resource."""
 
 
+class CapacityProviderUnavailable(RuntimeError):
+    """A policy edit cannot verify the configured provider's current limits."""
+
+
 class ExternalCapacityClient:
     """No implicit retries or redirects after an uncertain provider mutation.
 
