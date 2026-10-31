@@ -2195,6 +2195,8 @@ def test_a_job_is_outdated_only_when_its_build_and_its_launcher_are_gone() -> No
     assert not live.outdated(job(launched_by=live_id)), "its launcher is live: never a loop"
     assert not live.outdated(job(state="starting")), "its build is unknown until admitted"
     assert not live.outdated(job(form="static")), "static executors roll with their Deployment"
+    assert not live.outdated(job(form="external", version="2.0", launched_by=live_id)), "current provider build stays ready"
+    assert not live.outdated(job(form="external", state="starting", launched_by=live_id)), "unadmitted resources do not rotate"
 
 
 async def test_live_controllers_expire_and_withdraw(db) -> None:  # type: ignore[no-untyped-def]

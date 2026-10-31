@@ -106,15 +106,18 @@ class LiveControllers:
     versions: frozenset[str]
 
     def outdated(self, worker: ExecutionWorker) -> bool:
-        """An admitted Job whose build no live controller runs and whose
-        launcher is gone. A Job launched by a live controller is never
-        outdated, so a replacement can never be replaced in turn; a Job not
-        yet admitted has not reported its build."""
+        """Rotate admitted workers once no live controller advertises their build.
+
+        Kubernetes controllers have a fixed build, so their own Jobs remain
+        protected from replacement loops. External controllers can adopt a
+        new provider build without restarting; their identity cannot protect
+        workers of the previous build. Unadmitted workers never rotate here.
+        """
         return (
             worker.form in MANAGED_WORKER_FORMS
             and worker.state in ("ready", "draining")
             and worker.version not in self.versions
-            and worker.launched_by not in self.ids
+            and (worker.form == "external" or worker.launched_by not in self.ids)
         )
 
 

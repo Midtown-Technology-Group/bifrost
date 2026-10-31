@@ -83,7 +83,11 @@ Normal claim-generation and owner fences continue to protect every work family.
 On confirmed physical loss or a qualified heartbeat timeout, the controller
 first marks the worker lost and performs canonical run recovery. Physical
 cleanup follows that fence. Idle drain, maximum lifetime, build rotation, and
-warm-worker policy use the shared worker-pool machinery.
+warm-worker policy use the shared worker-pool machinery. An external controller
+can adopt a new provider build without restarting. Its still-live controller
+identity therefore does not exempt old-build workers from normal rotation once
+no live controller advertises that build. Rotation drains workers under the
+existing warm minimum and capacity ceiling; it does not terminate active jobs.
 
 ## Development Acceptance
 

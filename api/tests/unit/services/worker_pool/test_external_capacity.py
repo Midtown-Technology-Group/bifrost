@@ -221,6 +221,27 @@ async def test_build_mismatch_does_not_prevent_exact_cleanup_after_fencing(db, c
     assert capacity.provider.starts == [str(worker_id)]
 
 
+async def test_provider_rollout_rotates_an_admitted_worker_from_the_same_controller(db, capacity):
+    await _accept_pool_run()
+    [worker_id] = await capacity.pool.launch_for_demand(capacity.policy)
+    await capacity.pool.reconcile_worker(worker_id, capacity.policy)
+    uid = capacity.provider.resources[str(worker_id)]["resource_uid"]
+    await claims.admit_external_worker(
+        worker_id, resource_uid=uid, launcher_id=uuid4(), version="test-worker", hostname="old-build",
+    )
+    # This controller remains alive while the external provider changes builds.
+    capacity.pool.live = external_controller.LiveControllers(
+        ids=frozenset({capacity.pool.id}), versions=frozenset({"next-worker"}),
+    )
+
+    assert await capacity.pool.replace_outdated(replace(capacity.policy, warm_workers=0)) == [worker_id]
+
+    async with db.context() as session:
+        worker = await session.get(ExecutionWorker, worker_id)
+        assert (worker.state, worker.end_reason) == ("draining", "rotated")
+    assert capacity.provider.resources[str(worker_id)]["state"] == "running"
+
+
 async def test_provider_cannot_replace_an_existing_resource_uid(db, capacity):
     await _accept_pool_run()
     [worker_id] = await capacity.pool.launch_for_demand(capacity.policy)
