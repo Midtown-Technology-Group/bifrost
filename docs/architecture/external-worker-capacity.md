@@ -97,3 +97,26 @@ identity rejection, admission, fencing before cleanup, and shared capacity
 limits. These tests do not establish Cloudflare deployment or runtime acceptance.
 That evidence must identify the deployed provider version, pinned worker image,
 canonical worker and claim identities, and observed scale-out and recovery.
+
+### Published Development Images
+
+The `Development Worker Image` workflow publishes on pushes to `dev/**` and
+supports manual dispatch. It builds the normal production Dockerfile for
+`linux/amd64`, stamps the source-derived development version, exercises the
+published image, signs its digest, and attests its build provenance. It does not
+deploy a provider or promote a production tag.
+
+Use the successful run for the exact source commit. Its
+`dev-worker-image-<source SHA>` artifact, retained for seven days, contains
+`identity.json` and `worker-image.tar.gz`. The identity records the source,
+published digest, embedded version, local image ID, archive checksum, producer
+run, and attempt. Verify the producer identity, provenance and checksums before
+transferring the image; an archive or matching tag alone is insufficient. Pin
+the verified platform digest in the infrastructure repository before deploying
+it through that repository's development procedure.
+
+Keep publication, deployment, launcher admission and job completion as separate
+acceptance observations. Record the provider deployment version, canonical
+worker UUID, resource UID and independently observed physical image alongside
+the job receipt. A newer source or image does not inherit an older build's
+runtime acceptance merely because its tests pass.
