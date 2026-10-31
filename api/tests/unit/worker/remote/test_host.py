@@ -269,22 +269,14 @@ async def test_owner_renewal_refusal_loses_ownership_immediately() -> None:
 
 
 @pytest.mark.asyncio
-async def test_one_api_agent_executor_starts_once_per_api_host() -> None:
-    executor = Mock()
-    executor.run.return_value = 0
-    executor.run = AsyncMock(return_value=0)
-    with patch("src.worker.api_agent.ApiAgentExecutor", return_value=executor) as agent:
-        host = RemoteControlHost()
-        await host.start()
-        await host.start()
+async def test_control_host_startup_does_not_start_a_token_worker_in_the_api() -> None:
+    from src.worker.remote import host
 
-        assert agent.call_count == 1
-        assert host.agent_executor is executor
-        executor.request_stop.assert_not_called()
-
-        await host.stop()
-
-    executor.request_stop.assert_called_once_with()
+    with patch.object(host, "_host", None), patch.object(asyncio, "create_task") as spawn:
+        await host.start_remote_control_host(Mock())
+        await host.start_remote_control_host(Mock())
+        spawn.assert_not_called()
+        await host.stop_remote_control_host()
 
 
 @pytest.mark.asyncio
@@ -328,8 +320,7 @@ async def test_a_worker_is_admitted_with_the_build_its_launcher_runs(reported, f
 
 
 @pytest.mark.asyncio
-async def test_remote_connect_does_not_create_a_second_api_agent_executor() -> None:
-    agent = Mock(run=AsyncMock(return_value=0))
+async def test_remote_connect_starts_one_physical_executor() -> None:
     socket = Mock(accept=AsyncMock(), send_text=AsyncMock())
     hello = Hello(
         launcher_id=LEASE.launcher_id,
@@ -344,20 +335,16 @@ async def test_remote_connect_does_not_create_a_second_api_agent_executor() -> N
     session = Mock(worker=Mock(), bridge=Mock(connected=True))
     session.stop = AsyncMock()
     with (
-        patch("src.worker.api_agent.ApiAgentExecutor", return_value=agent) as api_agent,
         patch("src.worker.remote.host.get_settings", return_value=Mock(secret_key="secret", memory_pressure_threshold=.85)),
-        patch("src.services.memory_requests.measure_budget", return_value=Mock(budget_bytes=100)),
-        patch("src.services.memory_requests.under_pressure", return_value=False),
         patch("src.worker.remote.host.admit_worker", new_callable=AsyncMock),
         patch("src.worker.remote.host.acquire_remote_owner", new_callable=AsyncMock, return_value=LEASE),
-        patch("src.worker.remote.host.ApiExecutor"),
+        patch("src.worker.remote.host.ApiExecutor") as executor,
         patch("src.worker.remote.host.RemoteSession", return_value=session),
     ):
         host = RemoteControlHost()
-        await host.start()
         await host.connect(socket)
 
-        assert api_agent.call_count == 1
+        assert executor.call_count == 1
         await host.stop()
 
 

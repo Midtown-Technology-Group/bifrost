@@ -15,6 +15,7 @@ from src.models.orm.execution_workers import ExecutionWorker, ExecutionWorkerCla
 from src.models.orm.work_dispatches import WorkDispatch
 from src.services.kubernetes_execution import load_kubernetes_policy
 from src.worker.remote.fencing import fence_remote_owner
+from src.worker.remote.protocol import EXECUTION_HANDLERS
 
 # Shared with the capacity controller: launches and idle drains serialize.
 CAPACITY_LOCK = "bifrost:worker-pool:capacity"
@@ -24,18 +25,8 @@ HEAD_OF_LINE_WAIT = timedelta(seconds=30)
 
 # Handlers this worker build can run, by version. A dispatch for any other
 # (handler, version) stays for a compatible worker.
-SUPPORTED_HANDLERS: tuple[tuple[str, int], ...] = (
-    ("workflow.execute", 1),
-    ("agent.run", 1),
-    ("agent.summarize", 1),
-    ("agent.summarize_backfill", 1),
-)
-# What a physical worker (a remote launcher) runs: workflow runs and agent
-# runs, each in its own child process. Summaries stay in the API.
-REMOTE_WORKER_HANDLERS: tuple[tuple[str, int], ...] = (
-    ("workflow.execute", 1),
-    ("agent.run", 1),
-)
+SUPPORTED_HANDLERS = EXECUTION_HANDLERS
+REMOTE_WORKER_HANDLERS = EXECUTION_HANDLERS
 REMOTE_WORKER_HANDLER_NAMES: tuple[str, ...] = tuple(
     handler for handler, _version in REMOTE_WORKER_HANDLERS
 )
@@ -149,6 +140,22 @@ async def mark_static_ready(incarnation_id: UUID, *, memory_budget_bytes: int) -
             .returning(ExecutionWorker.id)
         )
     return ready is not None
+
+
+async def report_worker_handlers(incarnation_id: UUID, handlers: list[str]) -> bool:
+    """Persist negotiated physical capabilities under the current owner fence."""
+    async with get_db_context() as db:
+        if not await fence_remote_owner(db, for_update=True):
+            return False
+        return await db.scalar(
+            update(ExecutionWorker)
+            .where(
+                ExecutionWorker.id == incarnation_id,
+                ExecutionWorker.state.in_(("starting", "ready", "draining")),
+            )
+            .values(supported_handlers=handlers)
+            .returning(ExecutionWorker.id)
+        ) is not None
 
 
 async def claim_next(

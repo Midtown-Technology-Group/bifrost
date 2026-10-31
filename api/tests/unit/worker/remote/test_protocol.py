@@ -20,7 +20,22 @@ from src.worker.remote.protocol import (
     sign_hello,
     verify_hello,
     fragment,
+    EXECUTION_HANDLERS,
+    LEGACY_EXECUTION_HANDLERS,
+    hello_execution_handlers,
 )
+
+
+def test_handler_negotiation_keeps_old_launchers_out_of_summary_claims() -> None:
+    assert hello_execution_handlers({}) == LEGACY_EXECUTION_HANDLERS
+    assert hello_execution_handlers({"handlers": [list(pair) for pair in EXECUTION_HANDLERS]}) == EXECUTION_HANDLERS
+    assert hello_execution_handlers({"handlers": [["agent.summarize", 2], ["agent.run", 1]]}) == (("agent.run", 1),)
+
+
+@pytest.mark.parametrize("handlers", [None, "all", [["agent.run", True]], [["agent.run"]], [["agent.run", 1]] * 2, [["agent.run", 1]] * 65])
+def test_invalid_handler_advertisements_are_rejected(handlers) -> None:
+    with pytest.raises(ProtocolError):
+        hello_execution_handlers({"handlers": handlers})
 
 
 def _hello(**changes: object) -> Hello:

@@ -133,6 +133,7 @@ class ThinRemoteProcessPool(ProcessPoolManager):
         services: list[OwnedAttempt] = []
         jobs: list[tuple[str, ClaimedPlatformJob]] = []
         agent_runs: dict[str, tuple[UUID, int]] = {}
+        summaries: dict[str, tuple[UUID, int, str]] = {}
         observed: set[str] = set()
         rejected: list[tuple[str, str]] = []
         async with get_db_context() as db:
@@ -226,7 +227,11 @@ class ThinRemoteProcessPool(ProcessPoolManager):
                         hard_memory_ratio=metadata.policy.hard_memory_ratio,
                         memory_required_bytes=job.memory_required_bytes, job_type=job.job_type,
                     )))
-                elif kind == "agent_run":
+                elif kind in ("agent_run", "agent_summary"):
+                    summary = kind == "agent_summary"
+                    handler = entry.get("handler") if summary else "agent.run"
+                    if summary and handler not in ("agent.summarize", "agent.summarize_backfill"):
+                        raise ValueError("Unknown summary handler")
                     # A cancelling run's child is still winding down; adopt
                     # it so its exit settles the run.
                     valid = await db.scalar(select(AgentRun.id).join(
@@ -234,14 +239,17 @@ class ThinRemoteProcessPool(ProcessPoolManager):
                         ExecutionWorkerClaim.subject_id == AgentRun.id,
                     ).where(
                         AgentRun.id == subject,
-                        AgentRun.status.in_(("queued", "running", "cancelling")),
+                        AgentRun.status.in_(("completed",) if summary else ("queued", "running", "cancelling")),
                         ExecutionWorkerClaim.worker_id == UUID(self.worker_id),
-                        ExecutionWorkerClaim.family == "agent_run",
+                        ExecutionWorkerClaim.family == ("agent_summary" if summary else "agent_run"),
                     ))
                     if valid is None:
                         rejected.append((route_id, kind))
                         continue
-                    agent_runs[route_id] = (subject, request_bytes)
+                    if summary:
+                        summaries[route_id] = (subject, request_bytes, str(handler))
+                    else:
+                        agent_runs[route_id] = (subject, request_bytes)
                 else:
                     raise ValueError("Unknown launcher route kind")
             await db.commit()
@@ -264,6 +272,7 @@ class ThinRemoteProcessPool(ProcessPoolManager):
             "services": services,
             "platform_jobs": jobs,
             "agent_runs": agent_runs,
+            "summaries": summaries,
         }
 
     def _adopt_handle(self, route_id: str, entry: dict[str, Any], started_at: datetime) -> ProcessHandle:

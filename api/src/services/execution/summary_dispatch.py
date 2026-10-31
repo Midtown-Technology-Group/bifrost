@@ -15,18 +15,23 @@ outcome is counted however the summary is delivered or recovered.
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, exists, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.log_safety import log_safe
 from src.models.orm.agent_runs import AgentRun
+from src.models.orm.execution_workers import ExecutionWorker, ExecutionWorkerClaim
 from src.models.orm.work_dispatches import WorkDispatch
 from src.services.memory_requests import SUMMARY_REQUEST_BYTES
 from src.services.work_dispatch import hand_off, stage_dispatch, take_dispatch_payload
+from src.core.database import get_db_context
+from src.worker.remote.fencing import fence_remote_owner
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +39,35 @@ FAMILY = "agent_summary"
 HANDLER = "agent.summarize"
 BACKFILL_HANDLER = "agent.summarize_backfill"
 HANDLER_VERSION = 1
+
+
+class SummaryOwnershipLost(RuntimeError):
+    """The physical executor no longer owns this summary."""
+
+
+@asynccontextmanager
+async def summary_owner_session(factory: Any, run_id: UUID, worker_id: UUID) -> AsyncIterator[AsyncSession]:
+    """Fence each short summary transaction against physical worker loss.
+
+    Lock the worker before the run, matching lost-worker recovery. No database
+    connection or lock is held while the provider request runs.
+    """
+    async with factory() as db:
+        worker = await db.scalar(select(ExecutionWorker.id).where(
+            ExecutionWorker.id == worker_id,
+            ExecutionWorker.state.in_(("ready", "draining")),
+        ).with_for_update(read=True))
+        owned = await db.scalar(select(AgentRun.id).where(
+            AgentRun.id == run_id,
+            exists().where(
+                ExecutionWorkerClaim.worker_id == worker_id,
+                ExecutionWorkerClaim.family == FAMILY,
+                ExecutionWorkerClaim.subject_id == run_id,
+            ),
+        ).with_for_update()) if worker is not None else None
+        if owned is None:
+            raise SummaryOwnershipLost("Summary worker ownership was lost")
+        yield db
 
 
 async def stage_summary(
@@ -144,12 +178,66 @@ async def fail_unclaimed_summary(db: AsyncSession, run_id: UUID, reason: str) ->
     )
 
 
+async def release_summary(*, worker_id: UUID, run_id: UUID, dispatch_id: UUID) -> None:
+    """Return a summary refused before forking, preserving its queue position."""
+    async with get_db_context() as db:
+        if not await fence_remote_owner(db, for_update=True):
+            return
+        released = await db.scalar(
+            update(WorkDispatch)
+            .where(
+                WorkDispatch.id == dispatch_id, WorkDispatch.family == FAMILY,
+                WorkDispatch.subject_id == run_id,
+                WorkDispatch.assigned_worker_id == worker_id,
+            )
+            .values(assigned_worker_id=None)
+            .returning(WorkDispatch.id)
+        )
+        if released is not None:
+            await db.execute(delete(ExecutionWorkerClaim).where(
+                ExecutionWorkerClaim.worker_id == worker_id,
+                ExecutionWorkerClaim.family == FAMILY,
+                ExecutionWorkerClaim.subject_id == run_id,
+            ))
+        await db.commit()
+    if released is not None:
+        await hand_off()
+
+
+async def fail_remote_summary(*, worker_id: UUID, run_id: UUID, reason: str) -> None:
+    """Settle an interrupted summary without changing the original agent run."""
+    async with get_db_context() as db:
+        if not await fence_remote_owner(db, for_update=True):
+            return
+        owned = exists().where(
+            ExecutionWorkerClaim.worker_id == worker_id,
+            ExecutionWorkerClaim.family == FAMILY,
+            ExecutionWorkerClaim.subject_id == run_id,
+        )
+        changed = await db.scalar(
+            update(AgentRun)
+            .where(
+                AgentRun.id == run_id, AgentRun.status == "completed", owned,
+                AgentRun.summary_status.in_(("pending", "generating")),
+            )
+            .values(summary_status="failed", summary_error=reason[:500])
+            .returning(AgentRun.id)
+        )
+        if changed is not None:
+            await db.execute(delete(WorkDispatch).where(
+                WorkDispatch.family == FAMILY, WorkDispatch.subject_id == run_id,
+                WorkDispatch.assigned_worker_id == worker_id,
+            ))
+        await db.commit()
+    await report_unclaimed_summary(run_id, {}, reason)
+
+
 async def report_unclaimed_summary(
     run_id: UUID, payload: dict[str, Any], reason: str
 ) -> None:
     """Count a summary nothing picked up against its backfill."""
     from src.core.database import get_session_factory
-    from src.services.execution.backfill_tracker import record_backfill_outcome
+    from src.services.execution.backfill_tracker import refresh_backfill_progress
 
     factory = get_session_factory()
     async with factory() as db:
@@ -157,8 +245,8 @@ async def report_unclaimed_summary(
             select(AgentRun.summary_backfill_job_id).where(AgentRun.id == run_id)
         )
     if job_id is not None:
-        await record_backfill_outcome(
-            job_id=job_id, run_id=run_id, succeeded=False, session_factory=factory
+        await refresh_backfill_progress(
+            job_id=job_id, session_factory=factory
         )
 
 

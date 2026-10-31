@@ -25,6 +25,7 @@ from src.services.execution.template_process import TemplateProcess
 from src.worker.remote.identity import LauncherIdentity, load_launcher_identity
 from src.worker.remote.protocol import (
     CREDENTIAL_PROTOCOL,
+    EXECUTION_HANDLERS,
     ControlEnvelope,
     FragmentAssembler,
     Hello,
@@ -151,6 +152,7 @@ class Child:
     started_at: str | None = None
     memory_request_bytes: int | None = None
     agent_run: bool = False
+    agent_handler: str = "agent.run"
     # Start time of the forked process, so a reused PID is never mistaken
     # for it when the launcher reaps an orphaned agent child.
     start_ticks: int | None = None
@@ -158,7 +160,7 @@ class Child:
     @property
     def kind(self) -> str:
         if self.agent_run:
-            return "agent_run"
+            return "agent_run" if self.agent_handler == "agent.run" else "agent_summary"
         return "service" if self.service is not None else "workflow"
 
 
@@ -299,6 +301,7 @@ class Launcher:
             "requirements": requirements,
             "version": get_version(),
             "credential_protocol": CREDENTIAL_PROTOCOL,
+            "handlers": EXECUTION_HANDLERS,
         }, separators=(",", ":")))
         welcome = json.loads(await self.socket.recv())
         if welcome.get("event") != "welcome" or not isinstance(welcome.get("session_generation"), int):
@@ -393,7 +396,14 @@ class Launcher:
                 self.track_child(child)
                 work.put_nowait((child.execution_id, context))
                 response["pid"] = pid
-            elif action == "agent_run":
+            elif action in ("agent_run", "agent_summary"):
+                handler = "agent.run" if action == "agent_run" else payload["handler"]
+                if handler not in ("agent.run", "agent.summarize", "agent.summarize_backfill"):
+                    raise ValueError("Unknown agent handler")
+                if action == "agent_summary" and handler == "agent.run":
+                    raise ValueError("Summary command requires a summary handler")
+                if action == "agent_summary" and payload.get("worker_id") != str(self.identity.incarnation_id):
+                    raise ValueError("Summary worker identity does not match this launcher")
                 self.check_fork_pressure()
                 route_id = payload["route_id"]
                 if route_id in self.children or route_id in self.jobs:
@@ -409,9 +419,12 @@ class Launcher:
                 child = Child(route_id, str(payload["run_id"]), pid, work, result,
                               time.monotonic(), 0,
                               memory_request_bytes=int(payload["memory_request_bytes"]),
-                              agent_run=True)
+                              agent_run=True, agent_handler=handler)
                 self.track_child(child)
-                work.put_nowait({"message": payload["message"]})
+                work.put_nowait({
+                    "message": payload["message"],
+                    **({"handler": handler, "worker_id": payload["worker_id"]} if action == "agent_summary" else {}),
+                })
                 response["pid"] = pid
             elif action == "platform_job":
                 if self.pressure_threshold is None:
@@ -521,7 +534,8 @@ class Launcher:
         """Inventory description of an agent child (live or terminal)."""
         return {
             "route_id": child.route_id,
-            "kind": "agent_run",
+            "kind": child.kind,
+            **({"handler": child.agent_handler} if child.kind == "agent_summary" else {}),
             "subject_id": child.execution_id,
             **extra,
             "memory_request_bytes": child.memory_request_bytes,

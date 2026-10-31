@@ -209,16 +209,23 @@ async def test_the_handler_counts_a_claimed_summary_against_its_backfill(world, 
     summarize = AsyncMock()
     record = AsyncMock()
     monkeypatch.setattr("src.jobs.summarize_worker.summarize_run", summarize)
-    monkeypatch.setattr(backfill_tracker, "record_backfill_outcome", record)
+    monkeypatch.setattr(backfill_tracker, "refresh_backfill_progress", record)
     message = dict(dispatch.message)
+    worker_id = uuid4()
+    world.workers.append(worker_id)
+    async with world.sessions() as db:
+        db.add(ExecutionWorker(id=worker_id, form="static", state="ready", slots=1))
+        await db.flush()
+        db.add(ExecutionWorkerClaim(worker_id=worker_id, family=FAMILY, subject_id=run_id))
+        await db.commit()
 
-    await handle_summarize_message(message, session_factory=world.sessions)
-    await handle_summarize_message(message, session_factory=world.sessions)
+    await handle_summarize_message(message, session_factory=world.sessions, worker_id=worker_id)
+    await handle_summarize_message(message, session_factory=world.sessions, worker_id=worker_id)
 
     summarize.assert_awaited_once()
+    assert summarize.await_args.args[0] == run_id
     record.assert_awaited_once()
     assert record.await_args.kwargs["job_id"] == job_id
-    assert record.await_args.kwargs["succeeded"] is True
 
 
 async def test_a_lost_executor_s_summary_is_requested_again(world) -> None:  # type: ignore[no-untyped-def]
@@ -246,7 +253,7 @@ async def test_an_unclaimed_backfill_summary_counts_as_failed(world, monkeypatch
     run_id = await world.run(backfill_job_id=job_id)
     live_run = await world.run()
     record = AsyncMock()
-    monkeypatch.setattr(backfill_tracker, "record_backfill_outcome", record)
+    monkeypatch.setattr(backfill_tracker, "refresh_backfill_progress", record)
     monkeypatch.setattr("src.core.database.get_session_factory", lambda: world.sessions)
 
     await report_unclaimed_summary(run_id, {}, "no capacity")
@@ -254,5 +261,4 @@ async def test_an_unclaimed_backfill_summary_counts_as_failed(world, monkeypatch
 
     record.assert_awaited_once()
     assert record.await_args.kwargs["job_id"] == job_id
-    assert record.await_args.kwargs["succeeded"] is False
 

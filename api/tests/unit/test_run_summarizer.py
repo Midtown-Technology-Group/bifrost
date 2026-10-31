@@ -6,6 +6,7 @@ extraction, and persists the parsed result onto the run record + an
 ``AIUsage`` row.
 """
 import json
+from functools import partial
 
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -16,6 +17,8 @@ from sqlalchemy import delete, select
 
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.ai_usage import AIUsage
+from src.models.orm.execution_workers import ExecutionWorker, ExecutionWorkerClaim
+from src.services.execution.summary_dispatch import SummaryOwnershipLost, summary_owner_session
 from src.services.llm import LLMResponse
 from src.services.execution.run_summarizer import (
     _clamp_confidence,
@@ -75,6 +78,43 @@ def _build_mock_client(response):
     client.complete = AsyncMock(return_value=response)
     client.provider_name = "anthropic"
     return client
+
+
+async def test_lost_summary_worker_cannot_overwrite_a_replacement_result(async_session_factory, seed_completed_run):
+    from src.services.execution import run_summarizer as mod
+
+    worker_id = uuid4()
+    async with async_session_factory() as db:
+        db.add(ExecutionWorker(id=worker_id, form="static", state="ready", slots=1))
+        await db.flush()
+        db.add(ExecutionWorkerClaim(worker_id=worker_id, family="agent_summary", subject_id=seed_completed_run.id))
+        await db.commit()
+
+    async def complete(**_kwargs):
+        async with async_session_factory() as db:
+            worker = await db.get(ExecutionWorker, worker_id)
+            worker.state = "lost"
+            run = await db.get(AgentRun, seed_completed_run.id)
+            run.asked, run.summary_status = "replacement result", "completed"
+            await db.commit()
+        return _build_mock_llm_response('{"asked": "stale result", "did": "stale"}')
+
+    client = _build_mock_client(None)
+    client.complete = AsyncMock(side_effect=complete)
+    try:
+        with patch.object(mod, "get_summarization_client", new=AsyncMock(return_value=(client, "test-model"))):
+            with pytest.raises(SummaryOwnershipLost):
+                await summarize_run(
+                    seed_completed_run.id,
+                    partial(summary_owner_session, async_session_factory, seed_completed_run.id, worker_id),
+                )
+        async with async_session_factory() as db:
+            run = await db.get(AgentRun, seed_completed_run.id)
+            assert (run.asked, run.summary_status) == ("replacement result", "completed")
+    finally:
+        async with async_session_factory() as db:
+            await db.execute(delete(ExecutionWorker).where(ExecutionWorker.id == worker_id))
+            await db.commit()
 
 
 @pytest.mark.asyncio

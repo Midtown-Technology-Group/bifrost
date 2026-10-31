@@ -38,6 +38,37 @@ MAX_CLOCK_SKEW_SECONDS = 60
 # receives legacy runtime tokens.
 CREDENTIAL_PROTOCOL = 2
 
+# Exact handler versions a physical launcher can execute. Older launchers
+# advertised no list and implemented only workflow and agent-run commands.
+LEGACY_EXECUTION_HANDLERS = (("workflow.execute", 1), ("agent.run", 1))
+EXECUTION_HANDLERS = (
+    *LEGACY_EXECUTION_HANDLERS,
+    ("agent.summarize", 1),
+    ("agent.summarize_backfill", 1),
+)
+
+
+def hello_execution_handlers(frame: Mapping[str, Any]) -> tuple[tuple[str, int], ...]:
+    """Intersect advertised capabilities with this API's supported versions."""
+    if "handlers" not in frame:
+        return LEGACY_EXECUTION_HANDLERS
+    advertised = frame["handlers"]
+    if not isinstance(advertised, list) or len(advertised) > 64:
+        raise ProtocolError("launcher handlers must be a bounded list")
+    pairs: list[tuple[str, int]] = []
+    for pair in advertised:
+        if (
+            not isinstance(pair, list) or len(pair) != 2
+            or not isinstance(pair[0], str) or isinstance(pair[1], bool)
+            or not isinstance(pair[1], int)
+        ):
+            raise ProtocolError("invalid launcher handler version")
+        value = (pair[0], pair[1])
+        if value in pairs:
+            raise ProtocolError("duplicate launcher handler")
+        pairs.append(value)
+    return tuple(pair for pair in EXECUTION_HANDLERS if pair in pairs)
+
 
 def hello_credential_protocol(frame: Mapping[str, Any]) -> int:
     """The credential protocol a launcher's hello frame reports (1 when absent)."""

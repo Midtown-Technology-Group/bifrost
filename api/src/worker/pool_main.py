@@ -629,7 +629,7 @@ class PoolWorker:
                 assert self._agent_consumer is not None
                 await self._agent_consumer.process_message(claim.message)
             else:
-                await handle_summarize_message(claim.message)
+                await self._execute_summary(claim)
         except Exception:
             logger.exception(
                 "Pool run failed in its consumer",
@@ -644,6 +644,10 @@ class PoolWorker:
             else:
                 self.admission.release(str(claim.dispatch_id))
             self.runs_handled += 1
+
+    async def _execute_summary(self, claim: PoolClaim) -> None:
+        """Execute a summary on this executor's physical runtime."""
+        await handle_summarize_message(claim.message, worker_id=self.incarnation_id)
 
     async def _platform_job_loop(self) -> None:
         """Claim local platform jobs while their memory fits the free budget.
