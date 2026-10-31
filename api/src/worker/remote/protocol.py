@@ -11,11 +11,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import tempfile
 import time
 from base64 import b64decode, b64encode
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from collections.abc import Iterator
 from typing import Any, Mapping
 from uuid import UUID
@@ -50,6 +51,7 @@ SUMMARY_CLAIM_PROTOCOL = 1
 # Shared execution and capacity policy: live summaries never wait behind a
 # backfill, and adding physical workers adds one slot for each handler.
 HANDLER_CONCURRENCY_LIMITS = (("agent.summarize", 1), ("agent.summarize_backfill", 1))
+WORKER_DRAIN_GRACE_SECONDS = 300
 
 
 def hello_execution_handlers(frame: Mapping[str, Any]) -> tuple[tuple[str, int], ...]:
@@ -112,32 +114,41 @@ class Hello:
     issued_at: int
     nonce: str
     hello_sequence: int
+    resource_uid: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
-        if not self.hostname or self.form not in {"job", "static"}:
+        if not self.hostname or self.form not in {"job", "static", "external"}:
             raise ProtocolError("hello identity fields are required")
         if self.form == "job" and (not self.job_uid or not self.pod_uid):
             raise ProtocolError("job hello requires Kubernetes identities")
-        if self.form == "static" and (self.job_uid is not None or self.pod_uid is not None):
-            raise ProtocolError("static hello cannot claim Kubernetes identities")
+        if self.form != "job" and (self.job_uid is not None or self.pod_uid is not None):
+            raise ProtocolError("non-Kubernetes hello cannot claim Kubernetes identities")
+        if self.form == "external":
+            if self.resource_uid is None or re.fullmatch(r"[a-zA-Z0-9._:-]{1,255}", self.resource_uid) is None:
+                raise ProtocolError("external hello requires a capacity resource identity")
+        elif self.resource_uid is not None:
+            raise ProtocolError("only external workers may claim a capacity resource identity")
         if len(self.nonce) < 24 or len(self.nonce) > 256:
             raise ProtocolError("hello nonce must be 24-256 characters")
         if self.hello_sequence < 1:
             raise ProtocolError("hello sequence must be positive")
 
     def canonical_bytes(self) -> bytes:
+        fields = {
+            "incarnation_id": str(self.incarnation_id),
+            "issued_at": self.issued_at,
+            "form": self.form,
+            "job_uid": self.job_uid,
+            "launcher_id": str(self.launcher_id),
+            "nonce": self.nonce,
+            "pod_uid": self.pod_uid,
+            "hostname": self.hostname,
+            "hello_sequence": self.hello_sequence,
+        }
+        if self.form == "external":
+            fields["resource_uid"] = self.resource_uid
         return json.dumps(
-            {
-                "incarnation_id": str(self.incarnation_id),
-                "issued_at": self.issued_at,
-                "form": self.form,
-                "job_uid": self.job_uid,
-                "launcher_id": str(self.launcher_id),
-                "nonce": self.nonce,
-                "pod_uid": self.pod_uid,
-                "hostname": self.hostname,
-                "hello_sequence": self.hello_sequence,
-            },
+            fields,
             separators=(",", ":"),
             sort_keys=True,
         ).encode()
@@ -160,13 +171,17 @@ class SignedHello(Hello):
                 issued_at=int(value["issued_at"]),
                 nonce=str(value["nonce"]),
                 hello_sequence=int(value["hello_sequence"]),
+                resource_uid=str(value["resource_uid"]) if value.get("resource_uid") is not None else None,
                 proof=str(value["proof"]),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise AuthenticationError("invalid hello") from exc
 
     def to_dict(self) -> dict[str, Any]:
-        return {key: str(value) if isinstance(value, UUID) else value for key, value in asdict(self).items()}
+        fields = asdict(self)
+        if self.form != "external":
+            fields.pop("resource_uid")
+        return {key: str(value) if isinstance(value, UUID) else value for key, value in fields.items()}
 
 
 @dataclass(frozen=True)
@@ -337,6 +352,7 @@ def verify_hello(
         issued_at=hello.issued_at,
         nonce=hello.nonce,
         hello_sequence=hello.hello_sequence,
+        resource_uid=hello.resource_uid,
     )
     expected = sign_hello(secret, unsigned).proof
     if not hmac.compare_digest(hello.proof, expected):

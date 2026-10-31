@@ -289,6 +289,7 @@ class Launcher:
             pod_uid=self.identity.pod_uid,
             hostname=self.identity.hostname,
             form=self.identity.form,
+            resource_uid=self.identity.resource_uid,
             issued_at=int(time.time()),
             nonce=new_nonce(),
             hello_sequence=self._hello_sequence,

@@ -257,6 +257,11 @@ loss only when its side effects are idempotent. Otherwise set
 
 ## Capacity and resource policy
 
+Physical worker provisioning also supports an explicitly selected external
+provider through the [external worker capacity protocol](external-worker-capacity.md).
+That adapter shares canonical demand, admission, and fencing; it does not
+introduce another job queue or status system.
+
 `PlatformJobPolicy` is an execution guardrail, not a second container scheduler.
 Every job type must declare a timeout, retry behavior, minimum memory headroom,
 and admission/hard memory ratios. The API control worker evaluates those values

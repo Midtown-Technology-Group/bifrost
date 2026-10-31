@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import exists, func, select, text, tuple_, update
 
 from src.core.database import get_db_context, get_liveness_db_context
-from src.models.orm.execution_workers import ExecutionWorker, ExecutionWorkerClaim
+from src.models.orm.execution_workers import MANAGED_WORKER_FORMS, ExecutionWorker, ExecutionWorkerClaim
 from src.models.orm.work_dispatches import WorkDispatch
 from src.services.kubernetes_execution import load_kubernetes_policy
 from src.worker.remote.fencing import fence_remote_owner
@@ -80,6 +80,30 @@ async def admit_worker(
                 ready_at=now,
                 heartbeat_at=func.now(),
                 last_claim_at=now,
+            )
+            .returning(ExecutionWorker.slots)
+        )
+
+
+async def admit_external_worker(
+    incarnation_id: UUID, *, resource_uid: str, launcher_id: UUID, version: str | None,
+) -> int | None:
+    """Bind the first physical process to a prepared external incarnation."""
+    async with get_db_context() as db:
+        if not await fence_remote_owner(db, for_update=True):
+            return None
+        return await db.scalar(
+            update(ExecutionWorker)
+            .where(
+                ExecutionWorker.id == incarnation_id,
+                ExecutionWorker.form == "external",
+                ExecutionWorker.state == "starting",
+                ExecutionWorker.capacity_resource_uid == resource_uid,
+                ExecutionWorker.remote_launcher_id.is_(None),
+            )
+            .values(
+                state="ready", remote_launcher_id=launcher_id, version=version,
+                ready_at=_now(), heartbeat_at=func.now(), last_claim_at=_now(),
             )
             .returning(ExecutionWorker.slots)
         )
@@ -389,7 +413,7 @@ async def begin_idle_drain(incarnation_id: UUID) -> bool:
         )
         ready_jobs = await db.scalar(
             select(func.count(ExecutionWorker.id)).where(
-                ExecutionWorker.form == "job",
+                ExecutionWorker.form.in_(MANAGED_WORKER_FORMS),
                 ExecutionWorker.resource_class == "standard",
                 ExecutionWorker.state == "ready",
             )

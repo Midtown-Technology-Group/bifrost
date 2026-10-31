@@ -74,7 +74,10 @@ from src.services.worker_pool.claims import (
     retire_worker,
 )
 from src.services.worker_pool.recovery import UNSTARTED_CLAIM_WINDOW, release_unstarted_claims
-from src.worker.remote.protocol import HANDLER_CONCURRENCY_LIMITS
+from src.worker.remote.protocol import (
+    HANDLER_CONCURRENCY_LIMITS,
+    WORKER_DRAIN_GRACE_SECONDS as DRAIN_GRACE_SECONDS,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -101,7 +104,6 @@ SWEEP_SECONDS = 15.0
 HEARTBEAT_SECONDS = 5.0
 # How long a job worker uses the Idle time it read from Settings -> Kubernetes.
 POLICY_REFRESH_SECONDS = 10.0
-DRAIN_GRACE_SECONDS = 300.0
 # How often the platform-job loop looks while it runs jobs or admission holds
 # it back; idle, it waits for a wake-up and sweeps every SWEEP_SECONDS, which
 # is also how often it recovers jobs whose runner lease expired.

@@ -281,7 +281,7 @@ async def test_control_host_startup_does_not_start_a_token_worker_in_the_api() -
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("reported", ["1.0.0-old", None])
-@pytest.mark.parametrize("form", ["job", "static"])
+@pytest.mark.parametrize("form", ["job", "static", "external"])
 async def test_a_worker_is_admitted_with_the_build_its_launcher_runs(reported, form) -> None:
     socket = Mock(accept=AsyncMock(), send_text=AsyncMock())
     hello = Hello(
@@ -290,6 +290,7 @@ async def test_a_worker_is_admitted_with_the_build_its_launcher_runs(reported, f
         job_uid="job" if form == "job" else None,
         pod_uid="pod" if form == "job" else None, hostname="runner-0", form=form,
         issued_at=int(time.time()), nonce="n" * 32, hello_sequence=1,
+        resource_uid="capacity-resource" if form == "external" else None,
     )
     initial = {
         "event": "hello", "hello": sign_hello("secret", hello).to_dict(),
@@ -306,6 +307,7 @@ async def test_a_worker_is_admitted_with_the_build_its_launcher_runs(reported, f
     with (
         patch("src.worker.remote.host.get_settings", return_value=Mock(secret_key="secret", memory_pressure_threshold=.85)),
         patch("src.worker.remote.host.admit_worker", new_callable=AsyncMock) as admit,
+        patch("src.worker.remote.host.admit_external_worker", new_callable=AsyncMock) as external,
         patch("src.worker.remote.host.register_static_worker", new_callable=AsyncMock) as register,
         patch("src.worker.remote.host.get_liveness_db_context", new=database),
         patch("src.worker.remote.host.acquire_remote_owner", new_callable=AsyncMock, return_value=LEASE),
@@ -314,9 +316,17 @@ async def test_a_worker_is_admitted_with_the_build_its_launcher_runs(reported, f
     ):
         await RemoteControlHost().connect(socket)
 
-    registered = admit if form == "job" else register
+    methods = {"job": admit, "static": register, "external": external}
+    registered = methods[form]
     assert registered.await_args.kwargs["version"] == reported
-    (register if form == "job" else admit).assert_not_awaited()
+    for other_form, method in methods.items():
+        if other_form != form:
+            method.assert_not_awaited()
+    if form == "external":
+        external.assert_awaited_once_with(
+            LEASE.worker_id, resource_uid="capacity-resource",
+            launcher_id=LEASE.launcher_id, version=reported,
+        )
 
 
 @pytest.mark.asyncio

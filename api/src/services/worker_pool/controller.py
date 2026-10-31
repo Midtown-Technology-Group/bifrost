@@ -28,12 +28,13 @@ import asyncio
 import json
 import logging
 import time
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, literal, select, text, update
+from sqlalchemy import and_, func, literal, select, text, update
 
 from shared.version import get_version
 from src.config import Settings, get_settings
@@ -43,7 +44,7 @@ from src.jobs.platform.kubernetes_client import (
     KubernetesJobClient,
     oom_killed,
 )
-from src.models.orm.execution_workers import ExecutionWorker
+from src.models.orm.execution_workers import MANAGED_WORKER_FORMS, ExecutionWorker
 from src.models.orm.platform_jobs import PlatformJob
 from src.models.orm.services import ServiceDefinition
 from src.models.orm.work_dispatches import WorkDispatch
@@ -110,20 +111,20 @@ class LiveControllers:
         outdated, so a replacement can never be replaced in turn; a Job not
         yet admitted has not reported its build."""
         return (
-            worker.form == "job"
+            worker.form in MANAGED_WORKER_FORMS
             and worker.state in ("ready", "draining")
             and worker.version not in self.versions
             and worker.launched_by not in self.ids
         )
 
 
-class WorkerPoolController:
-    def __init__(
-        self, client: KubernetesJobClient, settings: Settings, spec: WorkerJobSpec
-    ) -> None:
-        self.client = client
+class WorkerCapacityController(ABC):
+    """Shared reservation, demand, rotation and lifecycle policy."""
+
+    def __init__(self, settings: Settings, *, worker_form: str) -> None:
         self.settings = settings
-        self.spec = spec
+        self.worker_form = worker_form
+        self.cleanup_states = ("lost",)
         # Lost needs a steadily reachable database (worker_pool.liveness).
         self.reachability = Reachability()
         # This instance, as the launcher recorded on the Jobs it creates.
@@ -139,6 +140,21 @@ class WorkerPoolController:
         # pod. Unknown until applied once, so a restarted controller corrects
         # a mark left by its predecessor.
         self._evictable: dict[UUID, bool] = {}
+
+    @abstractmethod
+    def _managed_scope(self) -> Any:
+        """SQL predicate selecting resources this configured provider owns."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def _binding_fields(self, worker_id: UUID) -> dict[str, Any]:
+        """Persist provider identity before the resource can start."""
+        raise NotImplementedError
+
+    @abstractmethod
+    async def reconcile_worker(self, worker_id: UUID, policy: KubernetesPolicy) -> None:
+        """Reconcile one physical resource without changing domain ownership."""
+        raise NotImplementedError
 
     async def reconcile(self) -> None:
         # Before anything that can fail on the Kubernetes API, so the
@@ -156,11 +172,10 @@ class WorkerPoolController:
             ids = (
                 await db.scalars(
                     select(ExecutionWorker.id).where(
-                        ExecutionWorker.form == "job",
-                        ExecutionWorker.kubernetes_namespace == self.client.namespace,
+                        self._managed_scope(),
                         ExecutionWorker.state.in_(LIVE_STATES)
                         | (
-                            (ExecutionWorker.state == "lost")
+                            (ExecutionWorker.state.in_(self.cleanup_states))
                             & (ExecutionWorker.ended_at >= _now() - LOST_JOB_CLEANUP)
                         ),
                     )
@@ -189,108 +204,6 @@ class WorkerPoolController:
                 exc,
                 extra={"worker_id": str(worker_id)},
             )
-
-    async def reconcile_worker(self, worker_id: UUID, policy: KubernetesPolicy) -> None:
-        async with get_db_context() as db:
-            worker = await db.scalar(
-                select(ExecutionWorker)
-                .where(ExecutionWorker.id == worker_id)
-                .with_for_update(skip_locked=True)
-            )
-            if worker is None or worker.kubernetes_job_name is None:
-                return
-            name = worker.kubernetes_job_name
-            remote = await self.client.get_job(name)
-            if remote is not None and worker.kubernetes_job_uid is not None:
-                if remote["metadata"]["uid"] != worker.kubernetes_job_uid:
-                    # Never adopt or delete a replacement that reused the name.
-                    raise RuntimeError("Worker Job UID does not match its incarnation")
-            now = _now()
-
-            if worker.state == "lost":
-                if remote is not None:
-                    await self.client.delete_job(name, remote["metadata"]["uid"])
-                return
-
-            if worker.state == "reserved":
-                if remote is None:
-                    remote = await self.client.create_job(
-                        build_worker_job_manifest(
-                            worker.id,
-                            self.settings,
-                            self.spec,
-                            memory_limit_bytes=launch_limit(
-                                worker, policy.worker_memory_mib * 2**20
-                            ),
-                            sized=worker.resource_class == "sized",
-                        )
-                    )
-                    # Whoever creates the Job launches it, whichever replica
-                    # reserved the row. A Job adopted from an instance that
-                    # died before binding it keeps no launcher: it runs that
-                    # instance's image, not this one's.
-                    worker.launched_by = self.id
-                worker.kubernetes_job_uid = remote["metadata"]["uid"]
-                worker.state = "starting"
-                await db.commit()
-                # The binding is durable; only now may the pod start.
-                await self.client.start_job(name, remote["metadata"]["uid"])
-                return
-
-            reason = None
-            if remote is None:
-                reason = "job_missing"
-            elif worker.state == "starting":
-                if remote.get("spec", {}).get("suspend"):
-                    await self.client.start_job(name, remote["metadata"]["uid"])
-                elif now - worker.created_at >= timedelta(
-                    seconds=self.settings.pool_start_timeout_seconds
-                ):
-                    reason = "start_timeout"
-            elif self.reachability.steady() and await db.scalar(
-                select(func.count())
-                .select_from(ExecutionWorker)
-                .where(ExecutionWorker.id == worker.id, silent_executor())
-            ):
-                reason = "heartbeat_lost"
-            self._watch_drain(worker)
-            if reason is None:
-                await self._mark_evictable(worker)
-            ended = LostRuns()
-            if reason is not None:
-                # Its runs teach their workflows a larger request only when
-                # Kubernetes stopped the worker for memory.
-                out_of_memory = (
-                    remote is not None
-                    and worker.kubernetes_job_uid is not None
-                    and oom_killed(await self.client.list_pods(worker.kubernetes_job_uid))
-                )
-                self._lose(worker, "out_of_memory" if out_of_memory else reason, now)
-                ended = await end_runs_of_lost_worker(db, worker.id, out_of_memory=out_of_memory)
-            await db.commit()
-        await announce_lost_runs(ended)
-
-    async def _mark_evictable(self, worker: ExecutionWorker) -> None:
-        """Let the cluster autoscaler move a ready worker only while it is idle.
-
-        Kubernetes decides where pods run and which node to empty; this only
-        says when moving this worker interrupts nothing. The pod is patched
-        only when the answer changes.
-        """
-        now = time.monotonic()
-        if worker.state == "ready" and worker.memory_reserved_bytes == 0:
-            since = self._idle_since.setdefault(worker.id, now)
-            evictable = now - since >= EVICTABLE_AFTER_IDLE_SECONDS
-        else:
-            self._idle_since.pop(worker.id, None)
-            evictable = False
-        if self._evictable.get(worker.id) == evictable or worker.kubernetes_job_uid is None:
-            return
-        for pod in await self.client.list_pods(worker.kubernetes_job_uid):
-            await self.client.annotate_pod(
-                pod["metadata"]["name"], {SAFE_TO_EVICT: "true" if evictable else "false"}
-            )
-        self._evictable[worker.id] = evictable
 
     def _watch_drain(self, worker: ExecutionWorker) -> None:
         """Warn once when a draining worker's runs outlast the maximum
@@ -341,7 +254,7 @@ class WorkerPoolController:
         considered due for replacement.
         """
         if (
-            worker.form != "job"
+            worker.form not in MANAGED_WORKER_FORMS
             or worker.resource_class != "standard"
             or worker.state != "ready"
             or worker.ready_at is None
@@ -456,7 +369,7 @@ class WorkerPoolController:
                 # A Job admitted but still starting its pool has not measured
                 # its budget yet; until it reports, count the one expected.
                 # A static executor counts only once ready and measured.
-                if worker.form == "job" and (
+                if worker.form in MANAGED_WORKER_FORMS and (
                     worker.state in ("reserved", "starting") or worker.memory_budget_bytes is None
                 ):
                     budget = sizing.budget_bytes(launch_limit(worker, sizing.standard_limit_bytes))
@@ -476,7 +389,7 @@ class WorkerPoolController:
                 standard_budget=sizing.standard_budget_bytes,
                 largest_budget=sizing.largest_budget_bytes,
             )
-            jobs = sum(1 for worker in workers if worker.form == "job")
+            jobs = sum(1 for worker in workers if worker.form in MANAGED_WORKER_FORMS)
             now = _now()
             # Only standard Jobs make up the warm minimum; a sized Job exists
             # for its large work and drains once idle. A standard Job near its
@@ -486,7 +399,7 @@ class WorkerPoolController:
             undrained = sum(
                 1
                 for worker in workers
-                if worker.form == "job"
+                if worker.form in MANAGED_WORKER_FORMS
                 and worker.resource_class == "standard"
                 and worker.state != "draining"
                 and not self.live.outdated(worker)
@@ -551,7 +464,7 @@ class WorkerPoolController:
             jobs = (
                 await db.execute(
                     select(ExecutionWorker).where(
-                        ExecutionWorker.form == "job", ExecutionWorker.state.in_(LIVE_STATES)
+                        ExecutionWorker.form.in_(MANAGED_WORKER_FORMS), ExecutionWorker.state.in_(LIVE_STATES)
                     )
                 )
             ).scalars().all()
@@ -633,18 +546,142 @@ class WorkerPoolController:
         db.add(
             ExecutionWorker(
                 id=worker_id,
-                form="job",
+                form=self.worker_form,
                 state="reserved",
                 resource_class=resource_class,
                 slots=0,
                 memory_limit_bytes=memory_limit_bytes,
                 reserved_for_dispatch_id=reserved_for,
                 supported_handlers=list(REMOTE_WORKER_HANDLER_NAMES),
-                kubernetes_namespace=self.client.namespace,
-                kubernetes_job_name=worker_job_name(worker_id),
+                **self._binding_fields(worker_id),
             )
         )
         return worker_id
+
+
+class WorkerPoolController(WorkerCapacityController):
+    """Kubernetes adapter for the shared physical-worker controller."""
+
+    def __init__(
+        self, client: KubernetesJobClient, settings: Settings, spec: WorkerJobSpec,
+    ) -> None:
+        super().__init__(settings, worker_form="job")
+        self.client = client
+        self.spec = spec
+
+    def _managed_scope(self) -> Any:
+        return and_(
+            ExecutionWorker.form == "job",
+            ExecutionWorker.kubernetes_namespace == self.client.namespace,
+        )
+
+    def _binding_fields(self, worker_id: UUID) -> dict[str, Any]:
+        return {
+            "kubernetes_namespace": self.client.namespace,
+            "kubernetes_job_name": worker_job_name(worker_id),
+        }
+
+    async def reconcile_worker(self, worker_id: UUID, policy: KubernetesPolicy) -> None:
+        async with get_db_context() as db:
+            worker = await db.scalar(
+                select(ExecutionWorker)
+                .where(ExecutionWorker.id == worker_id)
+                .with_for_update(skip_locked=True)
+            )
+            if worker is None or worker.kubernetes_job_name is None:
+                return
+            name = worker.kubernetes_job_name
+            remote = await self.client.get_job(name)
+            if remote is not None and worker.kubernetes_job_uid is not None:
+                if remote["metadata"]["uid"] != worker.kubernetes_job_uid:
+                    # Never adopt or delete a replacement that reused the name.
+                    raise RuntimeError("Worker Job UID does not match its incarnation")
+            now = _now()
+
+            if worker.state == "lost":
+                if remote is not None:
+                    await self.client.delete_job(name, remote["metadata"]["uid"])
+                return
+
+            if worker.state == "reserved":
+                if remote is None:
+                    remote = await self.client.create_job(
+                        build_worker_job_manifest(
+                            worker.id,
+                            self.settings,
+                            self.spec,
+                            memory_limit_bytes=launch_limit(
+                                worker, policy.worker_memory_mib * 2**20
+                            ),
+                            sized=worker.resource_class == "sized",
+                        )
+                    )
+                    # Whoever creates the Job launches it, whichever replica
+                    # reserved the row. A Job adopted from an instance that
+                    # died before binding it keeps no launcher: it runs that
+                    # instance's image, not this one's.
+                    worker.launched_by = self.id
+                worker.kubernetes_job_uid = remote["metadata"]["uid"]
+                worker.state = "starting"
+                await db.commit()
+                # The binding is durable; only now may the pod start.
+                await self.client.start_job(name, remote["metadata"]["uid"])
+                return
+
+            reason = None
+            if remote is None:
+                reason = "job_missing"
+            elif worker.state == "starting":
+                if remote.get("spec", {}).get("suspend"):
+                    await self.client.start_job(name, remote["metadata"]["uid"])
+                elif now - worker.created_at >= timedelta(
+                    seconds=self.settings.pool_start_timeout_seconds
+                ):
+                    reason = "start_timeout"
+            elif self.reachability.steady() and await db.scalar(
+                select(func.count())
+                .select_from(ExecutionWorker)
+                .where(ExecutionWorker.id == worker.id, silent_executor())
+            ):
+                reason = "heartbeat_lost"
+            self._watch_drain(worker)
+            if reason is None:
+                await self._mark_evictable(worker)
+            ended = LostRuns()
+            if reason is not None:
+                # Its runs teach their workflows a larger request only when
+                # Kubernetes stopped the worker for memory.
+                out_of_memory = (
+                    remote is not None
+                    and worker.kubernetes_job_uid is not None
+                    and oom_killed(await self.client.list_pods(worker.kubernetes_job_uid))
+                )
+                self._lose(worker, "out_of_memory" if out_of_memory else reason, now)
+                ended = await end_runs_of_lost_worker(db, worker.id, out_of_memory=out_of_memory)
+            await db.commit()
+        await announce_lost_runs(ended)
+
+    async def _mark_evictable(self, worker: ExecutionWorker) -> None:
+        """Let the cluster autoscaler move a ready worker only while it is idle.
+
+        Kubernetes decides where pods run and which node to empty; this only
+        says when moving this worker interrupts nothing. The pod is patched
+        only when the answer changes.
+        """
+        now = time.monotonic()
+        if worker.state == "ready" and worker.memory_reserved_bytes == 0:
+            since = self._idle_since.setdefault(worker.id, now)
+            evictable = now - since >= EVICTABLE_AFTER_IDLE_SECONDS
+        else:
+            self._idle_since.pop(worker.id, None)
+            evictable = False
+        if self._evictable.get(worker.id) == evictable or worker.kubernetes_job_uid is None:
+            return
+        for pod in await self.client.list_pods(worker.kubernetes_job_uid):
+            await self.client.annotate_pod(
+                pod["metadata"]["name"], {SAFE_TO_EVICT: "true" if evictable else "false"}
+            )
+        self._evictable[worker.id] = evictable
 
 
 @dataclass(frozen=True)
@@ -813,4 +850,4 @@ async def worker_pool_loop(stop_event: asyncio.Event, settings: Any | None = Non
         await client.close()
 
 
-__all__ = ["LiveControllers", "WorkerPoolController", "worker_pool_loop"]
+__all__ = ["LiveControllers", "WorkerCapacityController", "WorkerPoolController", "worker_pool_loop"]

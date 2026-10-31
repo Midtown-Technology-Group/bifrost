@@ -27,6 +27,7 @@ from src.services.execution.template_process import TEMPLATE_START_TIMEOUT_SECON
 from src.services.memory_requests import MemoryBudget
 from src.services.worker_pool.claims import (
     PoolClaim,
+    admit_external_worker,
     admit_worker,
     register_static_worker,
     report_worker_handlers,
@@ -964,15 +965,36 @@ class RemoteControlHost:
                     )
                 if bound_pod is None:
                     raise AuthenticationError("launcher pod is not the admitted Job pod")
+        elif hello.form == "external":
+            assert hello.resource_uid is not None
+            version = initial.get("version")
+            admitted = await admit_external_worker(
+                hello.incarnation_id, resource_uid=hello.resource_uid,
+                launcher_id=hello.launcher_id, version=version if isinstance(version, str) else None,
+            )
+            if admitted is None:
+                async with get_liveness_db_context() as db:
+                    bound_resource = await db.scalar(
+                        select(ExecutionWorker.id).where(
+                            ExecutionWorker.id == hello.incarnation_id,
+                            ExecutionWorker.form == "external",
+                            ExecutionWorker.state.in_(("ready", "draining")),
+                            ExecutionWorker.capacity_resource_uid == hello.resource_uid,
+                            ExecutionWorker.remote_launcher_id == hello.launcher_id,
+                        )
+                    )
+                if bound_resource is None:
+                    raise AuthenticationError("launcher is not bound to the prepared capacity resource")
         else:
             async with get_liveness_db_context() as db:
-                existing_static = await db.scalar(
-                    select(ExecutionWorker.id).where(
+                existing_form = await db.scalar(
+                    select(ExecutionWorker.form).where(
                         ExecutionWorker.id == hello.incarnation_id,
-                        ExecutionWorker.form == "static",
                     )
                 )
-            if existing_static is None:
+            if existing_form is not None and existing_form != "static":
+                raise AuthenticationError("static launcher cannot claim a managed incarnation")
+            if existing_form is None:
                 version = initial.get("version")
                 await register_static_worker(
                     hostname=hello.hostname,

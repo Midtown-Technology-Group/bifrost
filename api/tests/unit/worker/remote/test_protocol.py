@@ -66,6 +66,29 @@ def test_hello_signature_binds_every_identity_field() -> None:
         verify_hello("platform-secret", tampered, now=hello.issued_at + 1)
 
 
+def test_external_hello_signature_binds_the_prepared_resource() -> None:
+    hello = _hello(form="external", job_uid=None, pod_uid=None, resource_uid="resource-123")
+    signed = sign_hello("platform-secret", hello)
+    assert verify_hello("platform-secret", signed, now=hello.issued_at) == hello
+    with pytest.raises(AuthenticationError):
+        verify_hello("platform-secret", replace(signed, resource_uid="replacement"), now=hello.issued_at)
+
+
+@pytest.mark.parametrize("form", ["job", "static"])
+def test_existing_hello_bytes_and_fields_are_unchanged(form) -> None:
+    hello = _hello(form=form, **({"job_uid": None, "pod_uid": None} if form == "static" else {}))
+    fields = {
+        key: str(value) if isinstance(value, UUID) else value
+        for key in (
+            "launcher_id", "incarnation_id", "job_uid", "pod_uid", "hostname",
+            "form", "issued_at", "nonce", "hello_sequence",
+        )
+        for value in (getattr(hello, key),)
+    }
+    assert hello.canonical_bytes() == json.dumps(fields, sort_keys=True, separators=(",", ":")).encode()
+    assert "resource_uid" not in sign_hello("platform-secret", hello).to_dict()
+
+
 def test_hello_rejects_stale_proof_before_database_registration() -> None:
     hello = _hello()
     signed = sign_hello("platform-secret", hello)
