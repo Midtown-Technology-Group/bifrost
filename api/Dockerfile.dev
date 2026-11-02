@@ -6,7 +6,7 @@
 # Stage 1: Builder
 # =============================================================================
 # python:3.14-slim
-FROM python@sha256:cae66f2ef0ec51a9891263eeee7f987dacf0a9879e8aa9353d5606e0530619a5 AS builder
+FROM python@sha256:f17ec845ebdd4f3347431579e1c22eaeec82913f039f2a54b937c7ff870bacdb AS builder
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ RUN pip install --no-cache-dir --only-binary :all: --require-hashes -r requireme
 # Stage 2: Runtime
 # =============================================================================
 # python:3.14-slim
-FROM python@sha256:cae66f2ef0ec51a9891263eeee7f987dacf0a9879e8aa9353d5606e0530619a5 AS runtime
+FROM python@sha256:f17ec845ebdd4f3347431579e1c22eaeec82913f039f2a54b937c7ff870bacdb AS runtime
 
 WORKDIR /app
 ARG BIFROST_VERSION=unknown
