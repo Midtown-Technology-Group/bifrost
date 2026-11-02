@@ -181,43 +181,11 @@ async def check_package_updates() -> list[PackageUpdate]:
 
 
 async def get_installed_packages_local() -> list[InstalledPackage]:
-    """
-    Get list of installed Python packages from local pip.
+    """Read a fresh pip inventory without blocking the event loop."""
+    from src.core.package_inventory import get_installed_packages as read_inventory
 
-    Uses async subprocess to avoid blocking the event loop.
-    This is a fallback when no workers are registered in Redis.
-    """
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "pip", "list", "--format=json",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            logger.error("pip list timed out")
-            return []
-
-        if proc.returncode != 0:
-            logger.error(f"pip list failed: {stderr.decode()}")
-            return []
-
-        packages_data = json.loads(stdout.decode())
-        return [
-            InstalledPackage(name=pkg["name"], version=pkg["version"])
-            for pkg in packages_data
-        ]
-
-    except json.JSONDecodeError:
-        logger.error("Failed to parse pip output")
-        return []
-    except Exception as e:
-        logger.error(f"Error getting installed packages: {str(e)}")
-        return []
+    packages = await asyncio.to_thread(read_inventory)
+    return [InstalledPackage(**package) for package in packages]
 
 
 async def get_installed_packages() -> list[InstalledPackage]:

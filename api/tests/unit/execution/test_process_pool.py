@@ -9,7 +9,6 @@ NOTE: These tests use mocks to avoid spawning real processes.
 """
 
 import asyncio
-import subprocess
 import json
 import signal
 import sys
@@ -1818,44 +1817,6 @@ async def test_successful_install_does_not_notify():
         await _notify_requirements_failures(result)
 
     get_svc.assert_not_called()
-
-
-def test_get_installed_packages_returns_pip_json():
-    from src.services.execution.process_pool import _get_installed_packages
-
-    completed = subprocess.CompletedProcess(
-        args=["pip", "list", "--format=json"],
-        returncode=0,
-        stdout='[{"name": "fastapi", "version": "1.0.0"}]',
-        stderr="",
-    )
-
-    with patch("src.services.execution.process_pool.subprocess.run", return_value=completed) as run:
-        packages = _get_installed_packages()
-
-    assert packages == [{"name": "fastapi", "version": "1.0.0"}]
-    run.assert_called_once_with(
-        ["pip", "list", "--format=json"],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-
-
-def test_get_installed_packages_returns_empty_on_failure():
-    from src.services.execution.process_pool import _get_installed_packages
-
-    with patch("src.services.execution.process_pool.subprocess.run", side_effect=RuntimeError("pip failed")):
-        assert _get_installed_packages() == []
-
-    completed = subprocess.CompletedProcess(
-        args=["pip", "list", "--format=json"],
-        returncode=1,
-        stdout="not-json",
-        stderr="boom",
-    )
-    with patch("src.services.execution.process_pool.subprocess.run", return_value=completed):
-        assert _get_installed_packages() == []
 
 
 @pytest.mark.asyncio
