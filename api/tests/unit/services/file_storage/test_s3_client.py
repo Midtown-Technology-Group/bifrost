@@ -59,6 +59,7 @@ async def test_generate_presigned_upload_url_uses_bucket_key_and_content_type() 
     url = await client.generate_presigned_upload_url(
         "uploads/a.txt",
         "text/plain",
+        content_length=12,
         expires_in=60,
     )
 
@@ -66,7 +67,12 @@ async def test_generate_presigned_upload_url_uses_bucket_key_and_content_type() 
     assert calls == [
         (
             "put_object",
-            {"Bucket": "files", "Key": "uploads/a.txt", "ContentType": "text/plain"},
+            {
+                "Bucket": "files",
+                "Key": "uploads/a.txt",
+                "ContentType": "text/plain",
+                "ContentLength": 12,
+            },
             60,
         )
     ]
