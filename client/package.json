@@ -80,7 +80,7 @@
 		"cmdk": "^1.1.1",
 		"dagre": "^0.8.5",
 		"date-fns": "^4.4.0",
-		"dompurify": "^3.4.12",
+		"dompurify": "^3.4.17",
 		"fast-check": "^4.9.0",
 		"framer-motion": "^13.1.1",
 		"fuse.js": "^7.5.0",
@@ -132,7 +132,7 @@
 		"eslint-plugin-react-hooks": "^7.0.1",
 		"eslint-plugin-react-refresh": "^0.4.14",
 		"globals": "^17.11.0",
-		"happy-dom": "^20.11.12",
+		"happy-dom": "^21.0.4",
 		"js-yaml": "^5.4.1",
 		"jsdom": "^30.0.1",
 		"openapi-typescript": "^7.9.1",
@@ -146,10 +146,11 @@
 	},
 	"overrides": {
 		"@babel/core@<7.29.6": "7.29.6",
-		"brace-expansion@<1.1.18": "1.1.18",
-		"brace-expansion@>=2 <2.1.4": "2.1.4",
-		"brace-expansion@>=4 <5.0.9": "5.0.9",
-		"dompurify": "^3.4.12",
-		"js-yaml@>=4 <4.3.2": "4.3.2"
+		"brace-expansion@<1.1.21": "1.1.21",
+		"brace-expansion@>=2 <2.1.7": "2.1.7",
+		"brace-expansion@>=4 <5.0.12": "5.0.12",
+		"dompurify": "^3.4.17",
+		"js-yaml@>=4 <4.3.2": "4.3.2",
+		"postcss-selector-parser@<6.1.5": "6.1.5"
 	}
 }
